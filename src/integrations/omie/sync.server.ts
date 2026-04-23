@@ -132,6 +132,7 @@ function mapContaPagar(r: AnyRec, companyId: string, batchId: string) {
     description: asString(cab["observacao"] ?? cab["numero_documento"]),
     document_number: asString(cab["numero_documento"]),
     category_raw: asString(cab["codigo_categoria"]),
+    customer_name: null as string | null,
     supplier_name: asString(cab["codigo_cliente_fornecedor"]),
     is_classified: false,
   };
@@ -163,6 +164,7 @@ function mapContaReceber(r: AnyRec, companyId: string, batchId: string) {
     document_number: asString(cab["numero_documento"]),
     category_raw: asString(cab["codigo_categoria"]),
     customer_name: asString(cab["codigo_cliente_fornecedor"]),
+    supplier_name: null as string | null,
     is_classified: false,
   };
 }
@@ -342,13 +344,16 @@ async function upsertBankMovement(item: AnyRec, companyId: string) {
   // Try to associate with the first known bank account
   const { data: ba } = await supabaseAdmin
     .from("bank_accounts").select("id").eq("company_id", companyId).limit(1).maybeSingle();
-  const payload = { ...rec, bank_account_id: ba?.id ?? null, synced_at: new Date().toISOString() };
-  if (!payload.bank_account_id) return { inserted: 0, updated: 0, errors: 0 };
+  const bankId = ba?.id;
+  if (!bankId) return { inserted: 0, updated: 0, errors: 0 };
+  const { bank_account_id: _omit, ...rest } = rec;
+  void _omit;
+  const payload = { ...rest, bank_account_id: bankId, synced_at: new Date().toISOString() };
   if (existing) {
     const { error } = await supabaseAdmin.from("bank_movements").update(payload).eq("id", existing.id);
     return { inserted: 0, updated: error ? 0 : 1, errors: error ? 1 : 0 };
   }
-  const { error } = await supabaseAdmin.from("bank_movements").insert(payload);
+  const { error } = await supabaseAdmin.from("bank_movements").insert([payload]);
   return { inserted: error ? 0 : 1, updated: 0, errors: error ? 1 : 0 };
 }
 
