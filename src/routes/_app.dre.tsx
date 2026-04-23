@@ -19,6 +19,7 @@ import { useKpis } from "@/lib/queries/kpis";
 import { useDreLines, useDreWaterfall, type DRELine } from "@/lib/queries/dre";
 import { downloadCsv } from "@/lib/export-csv";
 import { toast } from "sonner";
+import { downloadPdfReport } from "@/lib/export-pdf";
 
 export const Route = createFileRoute("/_app/dre")({
   head: () => ({
@@ -60,6 +61,30 @@ function DREPage() {
     toast.success("CSV exportado");
   };
 
+  const exportPdf = () => {
+    if (!dre.length) return;
+    downloadPdfReport({
+      title: "DRE Gerencial",
+      subtitle: `${company?.name ?? ""} · ${kpis?.range.label ?? ""}`,
+      filename: `dre_${kpis?.range.start ?? "periodo"}`,
+      rows: dre as unknown as Record<string, unknown>[],
+      summary: kpis ? [
+        { label: "Receita líquida", value: BRL(kpis.receitaLiquida) },
+        { label: "EBITDA", value: BRL(kpis.ebitda) },
+        { label: "Margem EBITDA", value: `${kpis.margemEbitda.toFixed(1)}%` },
+        { label: "Lucro líquido", value: BRL(kpis.resultadoLiquido) },
+      ] : undefined,
+      columns: [
+        { key: "conta", label: "Conta" },
+        { key: "valor", label: "Valor", align: "right", format: (v) => BRL(Number(v)) },
+        { key: "pctReceita", label: "% Receita", align: "right", format: (v) => `${Number(v).toFixed(1)}%` },
+        { key: "varAbs", label: "Var. abs.", align: "right", format: (v) => BRL(Number(v)) },
+        { key: "varPct", label: "Var. %", align: "right", format: (v) => `${Number(v).toFixed(1)}%` },
+      ],
+    });
+    toast.success("PDF exportado");
+  };
+
   return (
     <div className="space-y-6 anim-fade-in">
       <SectionHeader
@@ -71,6 +96,9 @@ function DREPage() {
             <PeriodPresets value={period} onChange={setPeriod} />
             <Button variant="outline" size="sm" className="gap-1.5" onClick={exportCsv}>
               <Download className="size-3.5" /> Exportar
+            </Button>
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={exportPdf}>
+              <Download className="size-3.5" /> PDF
             </Button>
           </>
         }
