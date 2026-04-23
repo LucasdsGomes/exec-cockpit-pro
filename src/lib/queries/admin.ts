@@ -181,8 +181,12 @@ export interface BudgetCsvRow {
 export function useUploadBudget(companyId: string | null | undefined) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (rows: BudgetCsvRow[]) => {
+    mutationFn: async (
+      arg: BudgetCsvRow[] | { rows: BudgetCsvRow[]; scenario?: BudgetScenario },
+    ) => {
       if (!companyId) throw new Error("Empresa não selecionada");
+      const rows = Array.isArray(arg) ? arg : arg.rows;
+      const scenario: BudgetScenario = (Array.isArray(arg) ? "orcado" : (arg.scenario ?? "orcado"));
       if (!rows.length) throw new Error("Nenhuma linha para importar");
       const payload = rows.map((r) => ({
         company_id: companyId,
@@ -190,7 +194,7 @@ export function useUploadBudget(companyId: string | null | undefined) {
         managerial_account: r.managerial_account,
         amount: r.amount,
         category_mapped: r.category_mapped ?? null,
-        scenario: "orcado" as const,
+        scenario,
       }));
       const { error } = await supabase.from("budget_entries").insert(payload);
       if (error) throw error;
@@ -199,6 +203,8 @@ export function useUploadBudget(companyId: string | null | undefined) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["budgetEntries", companyId] }),
   });
 }
+
+export type BudgetScenario = "orcado" | "reprojetado" | "realizado";
 
 export interface BudgetEntryRow {
   id: string;
@@ -434,8 +440,12 @@ export function useReconcileBankMovements(companyId: string | null | undefined) 
 export function useSyncBankStatements(companyId: string | null | undefined) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (lookbackDays: number = 90) => {
+    mutationFn: async (
+      arg: number | { lookbackDays?: number; bankAccountId?: string | null } = 90,
+    ) => {
       if (!companyId) throw new Error("Empresa não selecionada");
+      const lookbackDays = typeof arg === "number" ? arg : (arg.lookbackDays ?? 90);
+      const bankAccountId = typeof arg === "number" ? null : (arg.bankAccountId ?? null);
       const res = await fetch("/api/public/hooks/omie-sync-now", {
         method: "POST",
         headers: {
@@ -447,6 +457,7 @@ export function useSyncBankStatements(companyId: string | null | undefined) {
           lookbackDays,
           mode: "incremental",
           endpoints: ["movimentacoes_bancarias"],
+          bankAccountId,
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -456,6 +467,7 @@ export function useSyncBankStatements(companyId: string | null | undefined) {
       qc.invalidateQueries({ queryKey: ["syncBatches", companyId] });
       qc.invalidateQueries({ queryKey: ["syncLogs", companyId] });
       qc.invalidateQueries({ queryKey: ["systemHealth", companyId] });
+      qc.invalidateQueries({ queryKey: ["bankAccountsStatus", companyId] });
     },
   });
 }
@@ -587,6 +599,191 @@ export function useReclassify(companyId: string | null | undefined) {
     },
     onSuccess: () => {
       qc.invalidateQueries();
+    },
+  });
+}
+
+// ---------- B.1 status de extrato por conta bancária ----------
+
+export interface BankAccountStatusRow {
+  id: string;
+  name: string;
+  bank_name: string | null;
+  source_record_id: string | null;
+  last_movement_date: string | null;
+  movement_count: number;
+  unreconciled_count: number;
+}
+
+export function useBankAccountsStatus(companyId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["bankAccountsStatus", companyId],
+    enabled: !!companyId,
+    queryFn: async (): Promise<BankAccountStatusRow[]> => {
+      const { data: accounts } = await supabase
+        .from("bank_accounts")
+        .select("id, name, bank_name, source_record_id")
+        .eq("company_id", companyId!)
+        .eq("active", true)
+        .order("name");
+      const list = accounts ?? [];
+      // Aggregate movements per account in one query
+      const { data: moves } = await supabase
+        .from("bank_movements")
+        .select("bank_account_id, movement_date, reconciled")
+        .eq("company_id", companyId!);
+      const agg = new Map<string, { last: string | null; count: number; un: number }>();
+      for (const m of moves ?? []) {
+        const k = String(m.bank_account_id);
+        const cur = agg.get(k) ?? { last: null, count: 0, un: 0 };
+        cur.count += 1;
+        if (!m.reconciled) cur.un += 1;
+        const d = String(m.movement_date);
+        if (!cur.last || d > cur.last) cur.last = d;
+        agg.set(k, cur);
+      }
+      return list.map((a) => {
+        const ag = agg.get(a.id) ?? { last: null, count: 0, un: 0 };
+        return {
+          id: a.id,
+          name: a.name,
+          bank_name: a.bank_name,
+          source_record_id: a.source_record_id,
+          last_movement_date: ag.last,
+          movement_count: ag.count,
+          unreconciled_count: ag.un,
+        };
+      });
+    },
+  });
+}
+
+// ---------- B.3 Lançamentos sem CC + atribuição em massa ----------
+
+export interface UnassignedEntryRow {
+  id: string;
+  competence_date: string;
+  description: string | null;
+  category_raw: string | null;
+  category_mapped: string | null;
+  supplier_name: string | null;
+  customer_name: string | null;
+  amount_signed: number;
+  direction: "entrada" | "saida";
+}
+
+export function useUnassignedCcEntries(
+  companyId: string | null | undefined,
+  limit = 200,
+) {
+  return useQuery({
+    queryKey: ["unassignedCcEntries", companyId, limit],
+    enabled: !!companyId,
+    queryFn: async (): Promise<UnassignedEntryRow[]> => {
+      const { data } = await supabase
+        .from("financial_entries")
+        .select(
+          "id, competence_date, description, category_raw, category_mapped, supplier_name, customer_name, amount_signed, direction",
+        )
+        .eq("company_id", companyId!)
+        .is("cost_center_id", null)
+        .order("competence_date", { ascending: false })
+        .limit(limit);
+      return (data ?? []).map((r) => ({
+        ...r,
+        amount_signed: Number(r.amount_signed ?? 0),
+      })) as UnassignedEntryRow[];
+    },
+  });
+}
+
+export interface CostCenterLite {
+  id: string;
+  code: string;
+  description: string;
+}
+
+export function useCostCenters(companyId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["costCenters", companyId],
+    enabled: !!companyId,
+    queryFn: async (): Promise<CostCenterLite[]> => {
+      const { data } = await supabase
+        .from("cost_centers")
+        .select("id, code, description")
+        .eq("company_id", companyId!)
+        .eq("active", true)
+        .order("code");
+      return (data ?? []) as CostCenterLite[];
+    },
+  });
+}
+
+export function useBulkAssignCostCenter(companyId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { entryIds: string[]; costCenterId: string }) => {
+      if (!companyId) throw new Error("Empresa não selecionada");
+      if (!input.entryIds.length) return 0;
+      const { error } = await supabase
+        .from("financial_entries")
+        .update({ cost_center_id: input.costCenterId })
+        .in("id", input.entryIds);
+      if (error) throw error;
+      // Propagate to dre_base
+      await supabase
+        .from("dre_base")
+        .update({ cost_center_id: input.costCenterId })
+        .in("source_entry_id", input.entryIds);
+      return input.entryIds.length;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["unassignedCcEntries", companyId] });
+      qc.invalidateQueries({ queryKey: ["dreLines"] });
+    },
+  });
+}
+
+// ---------- B.5 Importação manual de movimentos bancários (OFX/CSV) ----------
+
+export interface ManualBankMovementInput {
+  bank_account_id: string;
+  movement_date: string;
+  amount: number;
+  direction: "entrada" | "saida";
+  description?: string | null;
+  document_number?: string | null;
+  source_record_id?: string | null;
+}
+
+export function useImportBankMovements(companyId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (rows: ManualBankMovementInput[]) => {
+      if (!companyId) throw new Error("Empresa não selecionada");
+      if (!rows.length) throw new Error("Nenhuma movimentação para importar");
+      const payload = rows.map((r) => ({
+        company_id: companyId,
+        bank_account_id: r.bank_account_id,
+        movement_date: r.movement_date,
+        amount: Math.abs(r.amount),
+        direction: r.direction,
+        description: r.description ?? null,
+        document_number: r.document_number ?? null,
+        source_record_id: r.source_record_id ?? `manual:${r.bank_account_id}:${r.movement_date}:${Math.random().toString(36).slice(2, 8)}`,
+        synced_at: new Date().toISOString(),
+      }));
+      const { error } = await supabase.from("bank_movements").insert(payload);
+      if (error) throw error;
+      // Try reconciliation immediately
+      try {
+        await supabase.rpc("reconcile_bank_movements", { _company: companyId });
+      } catch {/* non-blocking */}
+      return payload.length;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["bankAccountsStatus", companyId] });
+      qc.invalidateQueries({ queryKey: ["systemHealth", companyId] });
     },
   });
 }

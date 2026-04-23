@@ -13,6 +13,8 @@ export interface SyncRunOptions {
   endDate?: string;   // YYYY-MM-DD
   triggeredBy?: string | null;
   mode?: "incremental" | "full" | "reprocess";
+  /** Restrict bank-statements sync to a single bank account id */
+  bankAccountId?: string | null;
 }
 
 export interface SyncRunResult {
@@ -453,6 +455,7 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
           triggeredBy,
           startDate: opts.startDate,
           endDate: opts.endDate,
+          bankAccountId: opts.bankAccountId ?? null,
         });
         break;
     }
@@ -512,6 +515,7 @@ async function runBankStatementsSync(opts: {
   triggeredBy: string | null;
   startDate?: string;
   endDate?: string;
+  bankAccountId?: string | null;
 }): Promise<SyncRunResult["endpoints"][number]> {
   const def = OMIE_ENDPOINTS.movimentacoes_bancarias;
   const start = Date.now();
@@ -528,11 +532,13 @@ async function runBankStatementsSync(opts: {
 
   let inserted = 0, updated = 0, errors = 0, total = 0;
   try {
-    const { data: accounts } = await supabaseAdmin
+    let q = supabaseAdmin
       .from("bank_accounts")
       .select("id, source_record_id, name")
       .eq("company_id", opts.companyId)
       .eq("active", true);
+    if (opts.bankAccountId) q = q.eq("id", opts.bankAccountId);
+    const { data: accounts } = await q;
     const list = (accounts ?? []).filter((a) => a.source_record_id);
     if (list.length === 0) {
       await logToDb(opts.companyId, batchId, "warn", "Nenhuma conta bancária com nCodCC configurado", def.endpoint, {});

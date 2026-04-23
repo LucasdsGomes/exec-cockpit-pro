@@ -13,7 +13,7 @@ export const Route = createFileRoute("/api/public/hooks/omie-sync-now")({
         if (!expectedAnon || auth !== `Bearer ${expectedAnon}`) {
           return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
         }
-        let body: { companyId?: string; lookbackDays?: number; mode?: "incremental" | "full"; endpoints?: OmieEndpointKey[] } = {};
+        let body: { companyId?: string; lookbackDays?: number; mode?: "incremental" | "full"; endpoints?: OmieEndpointKey[]; bankAccountId?: string | null } = {};
         try { body = await request.json(); } catch { /* empty body */ }
         if (!body.companyId) {
           return new Response(JSON.stringify({ error: "companyId required" }), { status: 400, headers: { "Content-Type": "application/json" } });
@@ -28,6 +28,7 @@ export const Route = createFileRoute("/api/public/hooks/omie-sync-now")({
             triggeredBy: null,
             mode: body.mode ?? "full",
             endpoints: body.endpoints,
+            bankAccountId: body.bankAccountId ?? null,
           });
           return new Response(JSON.stringify(r), { status: 200, headers: { "Content-Type": "application/json" } });
         } catch (e) {
