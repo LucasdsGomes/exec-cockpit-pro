@@ -1,79 +1,72 @@
 
 
-# Revisão do estado atual e pendências
+# Diagnóstico do problema "filtros não batem com a integração"
 
-## O que já está pronto (validado contra o banco)
+Os filtros globais agora **funcionam mecanicamente**, mas selecioná-los **zera os números** porque os dados-base não têm a chave que o filtro exige:
 
-| Item | Status | Evidência |
-|---|---|---|
-| Home / DRE / DFC / Ciclo / Balanço lendo dados reais | ✅ | 537 linhas no `dre_base`, queries refatoradas |
-| Subtotais DRE (Margem Bruta, EBITDA, Lucro Líquido) | ✅ | `dre-subtotals.ts` + `snapshot_kpis` corrigido |
-| Trigger de auto-classificação | ✅ | `tg_classify_entry` ativo em `financial_entries` |
-| Pipeline diário (snapshot + balanço) | ✅ | Snapshot e balanço de 2026-04-23 presentes |
-| Admin completo | ✅ | Abas Integrações, DE-PARA, Saldos, Orçamento, Ajustes, Parâmetros, Fila |
-| Exportação PDF/CSV | ✅ | `export-pdf.ts` e `export-csv.ts` |
+| Tabela | `cost_center_id` | `bank_account_id` | `business_unit` |
+|---|---|---|---|
+| `financial_entries` (543) | 0 | 0 | — |
+| `dre_base` (537) | 0 | — | 0 |
+| `dfc_forecast_base` (537) | — | 0 | — |
+| `dfc_realized_base` | 0 linhas no total | — | — |
+| `initial_balances` | — | 0 linhas no total | — |
 
-## Pendências reais identificadas
+**Causa raiz:** o sync OMIE (`src/integrations/omie/sync.server.ts`) só extrai `codigo_categoria` dos títulos. Ignora `codigo_projeto` (centro de custo / unidade), `codigo_conta_corrente` (banco) e os códigos de cliente/fornecedor. As funções `classify_financial_entry` e `mirror_payables_receivables` então propagam `NULL` adiante. Resultado: qualquer filtro de Unidade/Conta/CC zera tudo.
 
-### 1. Dados ainda zerados nas tabelas operacionais
-- `receivable_entries` e `payable_entries` = **0 linhas** → Home mostra "Próximos a receber/pagar" vazio, e o Ciclo Financeiro calcula PMR/PMP zerados.
-- `bank_movements` = 0 → DFC realizada continua vazia.
-- `dfc_realized_base` = 0 → Fluxo de Caixa cai no fallback "previsão".
-- `initial_balances` = 0 → Balanço só mostra resultado acumulado, sem ativos/passivos.
+# O que falta — em ordem de impacto
 
-**Causa:** o sync OMIE atual popula `financial_entries` (543), mas não está espelhando para `payable_entries`/`receivable_entries` nem chamando `ListarExtrato` para movimentos bancários.
+## 1. Enriquecer ingestão OMIE (resolve o problema dos filtros)
 
-### 2. Lacunas funcionais menores
-- `alert_rules` = 0 → bloco de alertas na Home sempre vazio (falta seed de regras padrão).
-- 6 lançamentos ainda sem classificação (DE-PARA faltante para 6 categorias OMIE).
-- Botão "Reprocessar fila" no Admin existe, mas não há indicador de quais 6 categorias precisam mapeamento manual.
+**`mapContaPagar` / `mapContaReceber`** passam a capturar do payload bruto:
+- `cab.codigo_projeto` → resolver para `cost_centers.id` por `source_record_id`.
+- `det.codigo_conta_corrente` (ou `nCodCC`) → resolver para `bank_accounts.id`.
+- `cab.codigo_cliente_fornecedor` → resolver para `suppliers.id` (pagar) ou `customers.id` (receber).
+- Persistir o payload completo em `metadata` (hoje vem `{}`) para reprocessamento futuro.
 
-### 3. UX / polimento
-- Home: estados vazios das listas AP/AR não orientam o usuário a sincronizar.
-- Admin → Integrações: não mostra um "próxima execução do cron" nem permite forçar `compute_balance_projection` por data passada (backfill).
-- Falta uma tela/aba simples de **diagnóstico** consolidando: última sync, contagens por tabela, regras inativas, categorias sem mapeamento.
+**`mapMovimento`** já tem `bank_account_id`; alimentar via `nCodCC` do extrato.
 
-## Plano de fechamento (ordem sugerida)
+Adicionar helper `resolveLocalRefs(record, companyId)` que faz upsert/lookup nas tabelas mapeadoras (`cost_center_mapping`, `chart_of_accounts_mapping`) e devolve os UUIDs.
 
-### Etapa A — Espelhar AP/AR a partir de `financial_entries` (destrava Home + Ciclo)
-1. Migration: função `mirror_payables_receivables(_company)` que para cada `financial_entries` com `direction='saida'`/`'entrada'` e `due_date IS NOT NULL` faz upsert em `payable_entries`/`receivable_entries` (chave `source_record_id` + `company_id`).
-2. Trigger `AFTER INSERT OR UPDATE ON financial_entries` chamando essa função para a linha nova.
-3. Backfill único: rodar `mirror_payables_receivables` para cada empresa ativa.
-4. Incluir a função no `run_daily_pipeline_all` para garantir consistência.
+## 2. Backfill em SQL (sem reimportar do OMIE)
 
-### Etapa B — Seed de regras de alerta padrão
-Migration que insere em `alert_rules` por empresa ativa (idempotente):
-- `caixa_minimo` < R$ 50.000 (severity warning)
-- `entradas_nao_classificadas` > 0 (info)
-- `contas_vencendo_7d` > 0 (warning)
-- `ciclo_financeiro` > 60 dias (info)
+Migration que:
+1. Para cada `financial_entries` existente, lê `metadata` (após reprocessamento do raw — ver passo 3) e popula as FKs faltantes.
+2. Atualiza `dre_base`, `dfc_forecast_base`, `dfc_realized_base`, `payable_entries`, `receivable_entries` com base no `source_entry_id` / `financial_entry_id` correspondente — evita rerodar a classificação.
+3. Atualiza `dre_base.business_unit` e `dre_base.department` via `cost_centers.business_unit/department`.
 
-Hook `useAlerts` já existe → só passa a retornar resultados.
+## 3. Reprocessar `omie_raw_payloads` para preencher `metadata`
 
-### Etapa C — Aba "Diagnóstico" no Admin
-Nova aba lendo via RPC `system_health(company)` que retorna JSON com:
-- contagens por tabela (financial/AP/AR/dre/dfc/balance)
-- última sync OMIE, último snapshot, último balance projection
-- categorias OMIE sem mapeamento (lista clicável → preenche linha do DE-PARA)
-- regras inativas
+Função SQL `reprocess_raw_payloads(company)` que percorre `omie_raw_payloads` (que tem o JSON bruto completo), faz match com `financial_entries` por `source_record_id` e atualiza `metadata` com o objeto original. Roda 1x e fica disponível como botão no Admin → Diagnóstico.
 
-### Etapa D — Backfill de balanço e ações no Admin
-- Botão "Recalcular balanço (últimos 30 dias)" em Integrações dispara loop de `compute_balance_projection` por dia.
-- Mostrar `cron.job` ativos (via RPC `list_cron_jobs` security definer restrita a admin) com próximas execuções.
+## 4. Sync de extratos bancários (Etapa E pendente)
 
-### Etapa E (opcional) — Sync de extratos bancários OMIE
-- Endpoint `ListarExtrato` por `bank_account` populando `bank_movements` e `dfc_realized_base`. Remove o aviso "mostrando previsão" no Fluxo de Caixa. Já estava marcado como fora de escopo no plano original; manter assim a menos que você priorize.
+Implementar `ListarExtrato` por `bank_account` em `sync.server.ts`:
+- novo endpoint em `OMIE_ENDPOINTS`: `financas/extrato → ListarExtrato`.
+- popular `bank_movements` (já existe `mapMovimento`).
+- trigger `mirror_bank_movement_to_dfc_realized` para alimentar `dfc_realized_base`.
+- desbloquia o modo "Realizado" no Fluxo de Caixa.
+
+## 5. Saldo inicial obrigatório no onboarding
+
+- Alerta no topo do Balanço quando `initial_balances` está vazio: "Cadastre os saldos iniciais para ver o balanço completo" → link para Admin → Saldos.
+- Pré-popular saldos iniciais zerados (1 linha por `bank_account` ativa) na primeira abertura da aba, para o usuário só preencher os valores.
+
+## 6. Pequenos ajustes de UX nos filtros
+
+- Se um filtro retorna 0 dados, mostrar aviso "Nenhum lançamento desta unidade/conta no período" em vez de KPIs zerados sem contexto.
+- Botão "Limpar filtros" no top bar (já existe `reset()` no contexto, falta o botão visível).
+- Indicador na badge do filtro: "Conta: BB · 2.341 lançamentos" para o usuário saber que casou.
 
 ## Detalhes técnicos
 
-- Todas migrations usam `CREATE OR REPLACE` e `ON CONFLICT DO UPDATE` para serem reentrantes.
-- `mirror_payables_receivables` faz match por `(company_id, source_record_id)` e atualiza `paid_amount`/`received_amount` quando `cash_date IS NOT NULL` para refletir status `realizado`.
-- Seed de `alert_rules` usa `ON CONFLICT (company_id, metric) DO NOTHING` (adicionar índice único se faltar).
-- Aba Diagnóstico é client-side: 1 query agregada via novo arquivo `src/lib/queries/health.ts`, reaproveitando hooks existentes onde possível.
-- Backfill de balanço roda no cliente (loop de 30 dias chamando RPC) com `toast.promise` mostrando progresso.
+- Arquivos editados: `src/integrations/omie/sync.server.ts` (mappers + resolvers), nova migration de backfill + função `reprocess_raw_payloads`, novo endpoint `financas/extrato` em `endpoints.ts`, atualização de `classify_financial_entry` para propagar as novas FKs, `AppShell.tsx` (botão limpar + contagem), `_app.projecao-balanco.tsx` (aviso de saldo inicial).
+- A reclassificação em massa pode ser feita via `run_full_pipeline(company)` após o backfill — sem necessidade de novo sync OMIE.
+- Etapa 4 (extratos) pode ficar em segundo passo; etapas 1, 2, 3, 5, 6 resolvem o sintoma reportado.
 
-## Fora de escopo (mantido como antes)
+## Fora deste escopo
 
-- Sync de extratos OMIE (Etapa E) — apenas se priorizado.
-- Cenários múltiplos de orçamento, drill-down por centro de custo, integração de estoque real (PME via inventário automatizado).
+- Drill-down por centro de custo dentro do DRE (cada linha clicável abrindo lançamentos) — pode ser próxima frente.
+- PME real via integração de estoque OMIE.
+- Cenários múltiplos de orçamento.
 
