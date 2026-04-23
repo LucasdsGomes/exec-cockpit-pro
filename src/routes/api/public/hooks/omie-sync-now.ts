@@ -1,7 +1,8 @@
 // Manual one-shot sync trigger. Authorized via SUPABASE_PUBLISHABLE_KEY bearer.
-// Body: { companyId: string, lookbackDays?: number, mode?: "incremental"|"full" }
+// Body: { companyId: string, lookbackDays?: number, mode?: "incremental"|"full", endpoints?: string[] }
 import { createFileRoute } from "@tanstack/react-router";
 import { runOmieSync } from "@/integrations/omie/sync.server";
+import type { OmieEndpointKey } from "@/integrations/omie/endpoints";
 
 export const Route = createFileRoute("/api/public/hooks/omie-sync-now")({
   server: {
@@ -12,7 +13,7 @@ export const Route = createFileRoute("/api/public/hooks/omie-sync-now")({
         if (!expectedAnon || auth !== `Bearer ${expectedAnon}`) {
           return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { "Content-Type": "application/json" } });
         }
-        let body: { companyId?: string; lookbackDays?: number; mode?: "incremental" | "full" } = {};
+        let body: { companyId?: string; lookbackDays?: number; mode?: "incremental" | "full"; endpoints?: OmieEndpointKey[] } = {};
         try { body = await request.json(); } catch { /* empty body */ }
         if (!body.companyId) {
           return new Response(JSON.stringify({ error: "companyId required" }), { status: 400, headers: { "Content-Type": "application/json" } });
@@ -26,6 +27,7 @@ export const Route = createFileRoute("/api/public/hooks/omie-sync-now")({
             endDate: today.toISOString().slice(0, 10),
             triggeredBy: null,
             mode: body.mode ?? "full",
+            endpoints: body.endpoints,
           });
           return new Response(JSON.stringify(r), { status: 200, headers: { "Content-Type": "application/json" } });
         } catch (e) {
