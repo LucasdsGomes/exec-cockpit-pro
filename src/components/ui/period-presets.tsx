@@ -13,6 +13,15 @@ export const PERIOD_PRESETS = [
 
 export type PeriodPreset = (typeof PERIOD_PRESETS)[number]["v"];
 
+export const FUTURE_PRESETS = [
+  { v: "next7", l: "+7d" },
+  { v: "next30", l: "+30d" },
+  { v: "next60", l: "+60d" },
+  { v: "next90", l: "+90d" },
+] as const;
+
+export type FuturePreset = (typeof FUTURE_PRESETS)[number]["v"];
+
 export function PeriodPresets({
   value,
   defaultValue = "30d",

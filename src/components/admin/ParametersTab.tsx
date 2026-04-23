@@ -11,6 +11,7 @@ const KNOWN_PARAMS: { key: string; label: string; help: string }[] = [
   { key: "inventory_value", label: "Valor de estoque atual (R$)", help: "Usado para calcular PME (Prazo Médio de Estoque)." },
   { key: "tax_rate", label: "Alíquota de impostos (%)", help: "Usado em projeções." },
   { key: "discount_rate", label: "Taxa de desconto (% a.a.)", help: "Usado em valuation." },
+  { key: "min_cash_balance", label: "Saldo mínimo de caixa (R$)", help: "Linha de referência e alerta na projeção do Fluxo de Caixa." },
 ];
 
 export function ParametersTab({ companyId }: { companyId: string | null | undefined }) {

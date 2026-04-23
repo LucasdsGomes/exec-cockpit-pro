@@ -7,51 +7,94 @@ import { BRL } from "@/lib/format";
 import {
   ResponsiveContainer, ComposedChart, CartesianGrid, XAxis, YAxis, Tooltip, Bar, Line, Area, AreaChart, ReferenceLine,
 } from "recharts";
-import { Download, AlertTriangle, ArrowDownRight, ArrowUpRight, Wallet, Info } from "lucide-react";
+import { Download, AlertTriangle, ArrowDownRight, ArrowUpRight, Wallet, Info, TrendingDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SectionHeader } from "@/components/ui/section-header";
-import { PeriodPresets } from "@/components/ui/period-presets";
+import { FUTURE_PRESETS, PERIOD_PRESETS } from "@/components/ui/period-presets";
 import { CHART_COLORS, CHART_GRID, CHART_AXIS_TICK, ChartTooltip } from "@/components/ui/chart-primitives";
 import { InsightCard } from "@/components/ui/insight-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCompany } from "@/lib/queries/company";
 import { useCashDaily } from "@/lib/queries/series";
-import { useDfcSummary, useDueHeatmap } from "@/lib/queries/dfc";
+import { useDfcSummary, useDueHeatmap, useCashProjection, useDfcForecastByNature } from "@/lib/queries/dfc";
 import { useFilters } from "@/lib/filters-context";
 import { downloadCsv } from "@/lib/export-csv";
 import { toast } from "sonner";
+import { isFuturePreset } from "@/lib/period";
 
 export const Route = createFileRoute("/_app/fluxo-de-caixa")({
   head: () => ({
     meta: [
       { title: "Fluxo de Caixa — Hitech Electric" },
-      { name: "description", content: "DFC realizada e prevista, calendário de vencimentos e projeção de caixa." },
+      { name: "description", content: "Projeção forward-looking de caixa, calendário de vencimentos e DFC histórica." },
     ],
   }),
   component: FluxoCaixa,
 });
 
+const HORIZON_BY_PRESET: Record<string, number> = {
+  next7: 7,
+  next30: 30,
+  next60: 60,
+  next90: 90,
+};
+
 function FluxoCaixa() {
-  const [period, setPeriod] = useState("30d");
+  // Default: olhar para frente (30 dias)
+  const [period, setPeriod] = useState<string>("next30");
   const { data: company } = useCompany();
   const companyId = company?.id;
   const filters = useFilters();
-  const { data: dfc, isLoading: loadingDfc } = useDfcSummary(companyId, period, filters);
-  const { data: caixaDiario = [], isLoading: loadingDaily } = useCashDaily(companyId, period, filters);
-  const { data: heatmap = [] } = useDueHeatmap(companyId, 28);
+  const isFuture = isFuturePreset(period);
+  const horizonDays = HORIZON_BY_PRESET[period] ?? 30;
 
-  const totalEntradas = dfc?.totalEntradas ?? 0;
-  const totalSaidas = dfc?.totalSaidas ?? 0;
-  const liquido = totalEntradas + totalSaidas;
+  // Forward-looking
+  const { data: projection, isLoading: loadingProj } = useCashProjection(
+    companyId,
+    horizonDays,
+    filters,
+  );
+  const { data: forecastBlocks = [], isLoading: loadingForecast } = useDfcForecastByNature(
+    companyId,
+    horizonDays,
+    filters,
+  );
+
+  // Histórico (aba Histórico)
+  const { data: dfc, isLoading: loadingDfc } = useDfcSummary(companyId, isFuture ? "30d" : period, filters);
+  const { data: caixaDiario = [], isLoading: loadingDaily } = useCashDaily(companyId, isFuture ? "30d" : period, filters);
+
+  // Heatmap próximos 60 dias
+  const heatmapDays = Math.min(Math.max(horizonDays, 28), 60);
+  const { data: heatmap = [] } = useDueHeatmap(companyId, heatmapDays);
 
   const exportCsv = () => {
-    if (!caixaDiario.length) return;
-    downloadCsv(caixaDiario.map((d) => ({ ...d })) as unknown as Record<string, unknown>[], `fluxo_caixa_${period}`, [
-      { key: "dia", label: "Dia" },
-      { key: "entrada", label: "Entrada" },
-      { key: "saida", label: "Saída" },
-      { key: "saldo", label: "Saldo" },
-    ]);
+    if (isFuture) {
+      if (!projection?.series.length) return;
+      downloadCsv(
+        projection.series.map((d) => ({
+          dia: d.dia,
+          entrada: d.entrada,
+          saida: d.saida,
+          saldo: d.saldo,
+        })) as unknown as Record<string, unknown>[],
+        `projecao_caixa_${period}`,
+        [
+          { key: "dia", label: "Dia" },
+          { key: "entrada", label: "Entradas previstas" },
+          { key: "saida", label: "Saídas previstas" },
+          { key: "saldo", label: "Saldo projetado" },
+        ],
+      );
+    } else {
+      if (!caixaDiario.length) return;
+      downloadCsv(caixaDiario.map((d) => ({ ...d })) as unknown as Record<string, unknown>[], `fluxo_caixa_${period}`, [
+        { key: "dia", label: "Dia" },
+        { key: "entrada", label: "Entrada" },
+        { key: "saida", label: "Saída" },
+        { key: "saldo", label: "Saldo" },
+      ]);
+    }
     toast.success("CSV exportado");
   };
 
@@ -60,10 +103,14 @@ function FluxoCaixa() {
       <SectionHeader
         eyebrow="Tesouraria"
         title="Fluxo de Caixa"
-        description={dfc ? `Visão diária consolidada · ${dfc.isForecast ? "previsão (extratos não sincronizados)" : "realizado"}` : "Carregando…"}
+        description={
+          isFuture
+            ? `Projeção dos próximos ${horizonDays} dias · baseada em contas a pagar/receber em aberto`
+            : "Visão histórica consolidada"
+        }
         actions={
           <>
-            <PeriodPresets value={period} onChange={setPeriod} />
+            <CashPeriodPicker value={period} onChange={setPeriod} />
             <Button variant="outline" size="sm" className="gap-1.5" onClick={exportCsv}>
               <Download className="size-3.5" /> Exportar
             </Button>
@@ -71,30 +118,175 @@ function FluxoCaixa() {
         }
       />
 
-      {dfc?.isForecast && (
-        <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs">
-          <Info className="size-4 text-warning shrink-0 mt-0.5" />
-          <div>
-            <div className="font-medium text-warning">Sincronização de extratos bancários ainda não disponível</div>
-            <div className="text-muted-foreground mt-0.5">Mostrando previsão baseada em contas a pagar/receber.</div>
-          </div>
-        </div>
+      {isFuture ? (
+        <ForwardKpis projection={projection} loading={loadingProj} />
+      ) : (
+        <HistoricalKpis dfc={dfc} />
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <SaldoCard label="Saldo inicial" value={BRL(dfc?.saldoInicial ?? 0)} icon={Wallet} />
-        <SaldoCard label="Entradas (mês)" value={BRL(totalEntradas)} positive trend={ArrowUpRight} />
-        <SaldoCard label="Saídas (mês)" value={BRL(totalSaidas)} negative trend={ArrowDownRight} />
-        <SaldoCard label="Saldo final" value={BRL(dfc?.saldoFinal ?? 0)} highlight delta={dfc?.saldoInicial ? (liquido / dfc.saldoInicial) * 100 : undefined} />
-      </div>
-
-      <Tabs defaultValue="realizada">
+      <Tabs defaultValue={isFuture ? "projecao" : "historico"} value={isFuture ? undefined : "historico"}>
         <TabsList className="bg-card border border-border h-9">
-          <TabsTrigger value="realizada">DFC {dfc?.isForecast ? "Prevista" : "Realizada"}</TabsTrigger>
-          <TabsTrigger value="prevista">DFC Prevista</TabsTrigger>
+          <TabsTrigger value="projecao" disabled={!isFuture}>Projeção</TabsTrigger>
+          <TabsTrigger value="calendario">Calendário</TabsTrigger>
+          <TabsTrigger value="historico">Histórico</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="realizada" className="mt-4 space-y-4">
+        {/* PROJEÇÃO ============================================ */}
+        <TabsContent value="projecao" className="mt-4 space-y-4">
+          <Card className="bg-card border-border surface-card">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base">Saldo projetado · próximos {horizonDays} dias</CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Saldo atual + (recebíveis − pagáveis) por data de vencimento
+                  </p>
+                </div>
+                {projection?.saldoMinimoConfig != null && (
+                  <span className="text-[11px] text-muted-foreground tabular-nums">
+                    Mín. configurado: <span className="text-warning font-medium">{BRL(projection.saldoMinimoConfig)}</span>
+                  </span>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="h-80 pt-2">
+              {loadingProj ? <Skeleton className="h-full" /> : !projection || projection.series.length === 0 ? (
+                <div className="h-full grid place-items-center text-sm text-muted-foreground">Sem dados para projetar.</div>
+              ) : (
+                <ResponsiveContainer>
+                  <AreaChart data={projection.series}>
+                    <defs>
+                      <linearGradient id="saldo-projecao" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={CHART_COLORS.accent} stopOpacity={0.4} />
+                        <stop offset="100%" stopColor={CHART_COLORS.accent} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} vertical={false} />
+                    <XAxis dataKey="dia" tick={{ ...CHART_AXIS_TICK, fontSize: 10 }} axisLine={false} tickLine={false} interval={Math.ceil(projection.series.length / 12)} />
+                    <YAxis tick={CHART_AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                    {projection.saldoMinimoConfig != null && (
+                      <ReferenceLine
+                        y={projection.saldoMinimoConfig}
+                        stroke={CHART_COLORS.negative}
+                        strokeDasharray="4 4"
+                        label={{ value: `mín. ${BRL(projection.saldoMinimoConfig)}`, fill: CHART_COLORS.negative, fontSize: 10, position: "insideTopRight" }}
+                      />
+                    )}
+                    <ReferenceLine y={0} stroke={CHART_COLORS.negative} strokeOpacity={0.5} />
+                    <Tooltip cursor={{ stroke: CHART_GRID }} content={<ChartTooltip formatter={(v: number) => BRL(v)} />} />
+                    <Area name="Saldo projetado" dataKey="saldo" stroke={CHART_COLORS.accent} strokeWidth={2.5} fill="url(#saldo-projecao)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          {projection && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <InsightCard
+                level={projection.saldoFinal >= projection.saldoAtual ? "ok" : "warn"}
+                title={projection.saldoFinal >= projection.saldoAtual ? "Caixa cresce no horizonte" : "Caixa diminui no horizonte"}
+                description={`Variação prevista de ${BRL(projection.saldoFinal - projection.saldoAtual)}.`}
+              />
+              <InsightCard
+                level={projection.minSaldo < 0 ? "error" : projection.saldoMinimoConfig != null && projection.minSaldo < projection.saldoMinimoConfig ? "warn" : "info"}
+                title={projection.minSaldoDate ? `Menor saldo em ${new Date(projection.minSaldoDate + "T00:00:00").toLocaleDateString("pt-BR")}` : "Saldo mínimo no horizonte"}
+                description={`${BRL(projection.minSaldo)} ${projection.minSaldo < 0 ? "— caixa negativo!" : projection.saldoMinimoConfig != null && projection.minSaldo < projection.saldoMinimoConfig ? "— abaixo do mínimo." : ""}`}
+              />
+              <InsightCard
+                level="info"
+                title="Cobertura líquida prevista"
+                description={`${BRL(projection.totalEntradas)} entradas vs ${BRL(projection.totalSaidas)} saídas.`}
+              />
+            </div>
+          )}
+
+          <Card className="bg-card border-border surface-card">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">DFC Prevista por natureza</CardTitle>
+              <p className="text-xs text-muted-foreground">Projeção dos próximos {horizonDays} dias</p>
+            </CardHeader>
+            <CardContent>
+              {loadingForecast ? <Skeleton className="h-32" /> : forecastBlocks.length === 0 ? (
+                <div className="py-10 text-center text-sm text-muted-foreground">
+                  Sem previsão DFC carregada para o horizonte.
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <tbody>
+                    {forecastBlocks.map((b) => (
+                      <Fragment key={b.tipo}>
+                        <tr>
+                          <td colSpan={2} className="pt-4 pb-1.5">
+                            <div className="text-eyebrow text-primary">{b.tipo}</div>
+                          </td>
+                        </tr>
+                        {b.itens.map((it) => (
+                          <tr key={it.conta} className="border-b border-border/40">
+                            <td className="py-2 pl-3 text-muted-foreground">{it.conta}</td>
+                            <td className={cn("py-2 text-right tabular-nums", it.valor < 0 ? "text-destructive" : "text-success")}>
+                              {BRL(it.valor)}
+                            </td>
+                          </tr>
+                        ))}
+                        <tr className="border-b border-border">
+                          <td className="py-2 font-medium">Subtotal {b.tipo}</td>
+                          <td className={cn("py-2 text-right font-semibold tabular-nums", b.total < 0 ? "text-destructive" : "text-success")}>
+                            {BRL(b.total)}
+                          </td>
+                        </tr>
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* CALENDÁRIO ============================================ */}
+        <TabsContent value="calendario" className="mt-4 space-y-4">
+          <Card className="bg-card border-border surface-card">
+            <CardHeader className="flex-row items-start justify-between pb-2">
+              <div>
+                <CardTitle className="text-base">Calendário de vencimentos</CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">Próximos {heatmapDays} dias</p>
+              </div>
+              {(() => {
+                const max = Math.max(...heatmap.map((h) => h.valor), 0);
+                const peaks = heatmap.filter((h) => h.valor > max * 0.7 && max > 0).length;
+                if (peaks === 0) return null;
+                return (
+                  <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-warning/10 text-warning border border-warning/30">
+                    <AlertTriangle className="size-3" /> {peaks} picos
+                  </span>
+                );
+              })()}
+            </CardHeader>
+            <CardContent>
+              <Heatmap cells={heatmap} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* HISTÓRICO ============================================ */}
+        <TabsContent value="historico" className="mt-4 space-y-4">
+          {!isFuture && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <SaldoCard label="Saldo inicial" value={BRL(dfc?.saldoInicial ?? 0)} icon={Wallet} />
+              <SaldoCard label="Entradas" value={BRL(dfc?.totalEntradas ?? 0)} positive trend={ArrowUpRight} />
+              <SaldoCard label="Saídas" value={BRL(dfc?.totalSaidas ?? 0)} negative trend={ArrowDownRight} />
+              <SaldoCard label="Saldo final" value={BRL(dfc?.saldoFinal ?? 0)} highlight />
+            </div>
+          )}
+          {isFuture && (
+            <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 p-3 text-xs">
+              <Info className="size-4 text-muted-foreground shrink-0 mt-0.5" />
+              <div className="text-muted-foreground">
+                Mostrando histórico dos últimos 30 dias. Para análise retrospectiva detalhada, troque o período acima para um preset passado (7d, 30d, MTD, etc.).
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <Card className="lg:col-span-2 bg-card border-border surface-card">
               <CardHeader className="pb-2">
@@ -126,35 +318,18 @@ function FluxoCaixa() {
             </Card>
 
             <Card className="bg-card border-border surface-card">
-              <CardHeader className="flex-row items-start justify-between pb-2">
-                <div>
-                  <CardTitle className="text-base">Vencimentos</CardTitle>
-                  <p className="text-xs text-muted-foreground mt-0.5">Próximos 28 dias</p>
-                </div>
-                {(() => {
-                  const max = Math.max(...heatmap.map((h) => h.valor), 0);
-                  const peaks = heatmap.filter((h) => h.valor > max * 0.7 && max > 0).length;
-                  if (peaks === 0) return null;
-                  return (
-                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-warning/10 text-warning border border-warning/30">
-                      <AlertTriangle className="size-3" /> {peaks} picos
-                    </span>
-                  );
-                })()}
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Resumo do período</CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">Líquido vs. saldo final</p>
               </CardHeader>
-              <CardContent>
-                <Heatmap cells={heatmap} />
+              <CardContent className="space-y-2 text-sm">
+                <div className="flex justify-between"><span className="text-muted-foreground">Saldo inicial</span><span className="tabular-nums">{BRL(dfc?.saldoInicial ?? 0)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Entradas</span><span className="tabular-nums text-success">{BRL(dfc?.totalEntradas ?? 0)}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Saídas</span><span className="tabular-nums text-destructive">{BRL(dfc?.totalSaidas ?? 0)}</span></div>
+                <div className="border-t border-border pt-2 flex justify-between"><span className="font-medium">Saldo final</span><span className="font-semibold tabular-nums text-primary">{BRL(dfc?.saldoFinal ?? 0)}</span></div>
               </CardContent>
             </Card>
           </div>
-
-          {dfc && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <InsightCard level={liquido >= 0 ? "ok" : "warn"} title={liquido >= 0 ? "Geração de caixa positiva" : "Geração de caixa negativa"} description={`Variação de ${BRL(liquido)} no período.`} />
-              <InsightCard level="info" title="Saldo final projetado" description={`${BRL(dfc.saldoFinal)} considerando saldo inicial + movimentações.`} />
-              <InsightCard level={dfc.isForecast ? "warn" : "ok"} title={dfc.isForecast ? "Dados de previsão" : "Dados realizados"} description={dfc.isForecast ? "Conecte extratos bancários para realizar." : "Conciliação OK."} />
-            </div>
-          )}
 
           <Card className="bg-card border-border surface-card">
             <CardHeader className="pb-2">
@@ -207,38 +382,88 @@ function FluxoCaixa() {
             </CardContent>
           </Card>
         </TabsContent>
-
-        <TabsContent value="prevista" className="mt-4 space-y-4">
-          <Card className="bg-card border-border surface-card">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Projeção de caixa · próximos 30 dias</CardTitle>
-              <p className="text-xs text-muted-foreground">Baseada em previstos + recorrências</p>
-            </CardHeader>
-            <CardContent className="h-80 pt-2">
-              {caixaDiario.length === 0 ? (
-                <div className="h-full grid place-items-center text-sm text-muted-foreground">Sem dados para projetar.</div>
-              ) : (
-              <ResponsiveContainer>
-                <AreaChart data={caixaDiario.map(d => ({ ...d, saldo: d.saldo * 1.04 }))}>
-                  <defs>
-                    <linearGradient id="saldo-prev" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={CHART_COLORS.accent} stopOpacity={0.35} />
-                      <stop offset="100%" stopColor={CHART_COLORS.accent} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} vertical={false} />
-                  <XAxis dataKey="dia" tick={{ ...CHART_AXIS_TICK, fontSize: 10 }} axisLine={false} tickLine={false} interval={2} />
-                  <YAxis tick={CHART_AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                  <ReferenceLine y={500_000} stroke={CHART_COLORS.negative} strokeDasharray="4 4" label={{ value: "mín. R$ 500k", fill: CHART_COLORS.negative, fontSize: 10, position: "insideTopRight" }} />
-                  <Tooltip cursor={{ stroke: CHART_GRID }} content={<ChartTooltip formatter={(v: number) => BRL(v)} />} />
-                  <Area name="Saldo previsto" dataKey="saldo" stroke={CHART_COLORS.accent} strokeWidth={2.5} fill="url(#saldo-prev)" />
-                </AreaChart>
-              </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function CashPeriodPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="inline-flex items-center gap-1.5">
+      <div role="tablist" aria-label="Horizonte" className="inline-flex items-center gap-0.5 rounded-md bg-input/40 border border-primary/30 p-0.5">
+        {FUTURE_PRESETS.map((p) => {
+          const active = p.v === value;
+          return (
+            <button key={p.v} role="tab" aria-selected={active} type="button" onClick={() => onChange(p.v)}
+              className={cn(
+                "px-2.5 h-7 rounded text-[11px] font-medium tabular-nums transition-colors",
+                active ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+              )}>
+              {p.l}
+            </button>
+          );
+        })}
+      </div>
+      <div role="tablist" aria-label="Histórico" className="inline-flex items-center gap-0.5 rounded-md bg-input/40 border border-border p-0.5">
+        {PERIOD_PRESETS.map((p) => {
+          const active = p.v === value;
+          return (
+            <button key={p.v} role="tab" aria-selected={active} type="button" onClick={() => onChange(p.v)}
+              className={cn(
+                "px-2.5 h-7 rounded text-[11px] font-medium tabular-nums transition-colors",
+                active ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+              )}>
+              {p.l}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ForwardKpis({ projection, loading }: { projection: ReturnType<typeof useCashProjection>["data"]; loading: boolean }) {
+  if (loading || !projection) {
+    return (
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-2xl" />)}
+      </div>
+    );
+  }
+  const delta = projection.saldoFinal - projection.saldoAtual;
+  const deltaPct = projection.saldoAtual !== 0 ? (delta / Math.abs(projection.saldoAtual)) * 100 : undefined;
+  const minBelow = projection.saldoMinimoConfig != null && projection.minSaldo < projection.saldoMinimoConfig;
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <SaldoCard label="Saldo atual" value={BRL(projection.saldoAtual)} icon={Wallet} />
+      <SaldoCard label="Entradas previstas" value={BRL(projection.totalEntradas)} positive trend={ArrowUpRight} />
+      <SaldoCard label="Saídas previstas" value={BRL(projection.totalSaidas)} negative trend={ArrowDownRight} />
+      <SaldoCard
+        label="Saldo projetado"
+        value={BRL(projection.saldoFinal)}
+        highlight
+        delta={deltaPct}
+        warning={projection.saldoFinal < 0 || minBelow}
+        footer={projection.minSaldoDate ? (
+          <span className={cn("inline-flex items-center gap-1 text-[11px] tabular-nums", projection.minSaldo < 0 || minBelow ? "text-destructive" : "text-muted-foreground")}>
+            <TrendingDown className="size-3" /> Mín. {BRL(projection.minSaldo)} em {new Date(projection.minSaldoDate + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+          </span>
+        ) : null}
+      />
+    </div>
+  );
+}
+
+function HistoricalKpis({ dfc }: { dfc: ReturnType<typeof useDfcSummary>["data"] }) {
+  const totalEntradas = dfc?.totalEntradas ?? 0;
+  const totalSaidas = dfc?.totalSaidas ?? 0;
+  const liquido = totalEntradas + totalSaidas;
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <SaldoCard label="Saldo inicial" value={BRL(dfc?.saldoInicial ?? 0)} icon={Wallet} />
+      <SaldoCard label="Entradas" value={BRL(totalEntradas)} positive trend={ArrowUpRight} />
+      <SaldoCard label="Saídas" value={BRL(totalSaidas)} negative trend={ArrowDownRight} />
+      <SaldoCard label="Saldo final" value={BRL(dfc?.saldoFinal ?? 0)} highlight delta={dfc?.saldoInicial ? (liquido / dfc.saldoInicial) * 100 : undefined} />
     </div>
   );
 }
@@ -262,22 +487,24 @@ function Legend() {
 }
 
 function SaldoCard({
-  label, value, positive, negative, highlight, icon: Icon, trend: Trend, delta,
+  label, value, positive, negative, highlight, icon: Icon, trend: Trend, delta, warning, footer,
 }: {
   label: string; value: string; positive?: boolean; negative?: boolean; highlight?: boolean;
   icon?: React.ComponentType<{ className?: string }>;
   trend?: React.ComponentType<{ className?: string }>;
   delta?: number;
+  warning?: boolean;
+  footer?: React.ReactNode;
 }) {
   return (
     <div
       className={cn(
         "rounded-2xl border bg-card p-4 transition-colors",
-        highlight ? "border-primary/30" : "border-border hover:border-border-strong",
+        warning ? "border-destructive/40" : highlight ? "border-primary/30" : "border-border hover:border-border-strong",
       )}
       style={{
         boxShadow: "var(--shadow-card)",
-        backgroundImage: highlight ? "var(--gradient-kpi-accent)" : undefined,
+        backgroundImage: highlight && !warning ? "var(--gradient-kpi-accent)" : undefined,
       }}
     >
       <div className="flex items-center justify-between">
@@ -289,11 +516,13 @@ function SaldoCard({
         "mt-2.5 text-xl font-semibold tabular-nums tracking-tight",
         positive && "text-success",
         negative && "text-destructive",
-        highlight && "text-primary",
+        highlight && !warning && "text-primary",
+        warning && "text-destructive",
       )}>{value}</div>
       {delta !== undefined && (
         <div className="text-[11px] text-muted-foreground mt-1 tabular-nums">{delta >= 0 ? "+" : ""}{delta.toFixed(1)}% no período</div>
       )}
+      {footer && <div className="mt-1">{footer}</div>}
     </div>
   );
 }
