@@ -194,7 +194,7 @@ export function useDreEntriesByLine(
       const range = periodToRange(period);
       // Map UI label back to dre_group(s). Stripping prefixes like "(-) " and "Margem"/"EBITDA" subtotals.
       const label = lineLabel ?? "";
-      const cleaned = label.replace(/^\(\-\)\s*/, "").trim();
+      const cleaned = label.replace(/^\(-\)\s*/, "").trim();
       // Subtotals/totals don't map to a single group → query all rows in range as best-effort.
       const SUBTOTAL_LABELS = new Set([
         "Receita Líquida",
@@ -216,7 +216,8 @@ export function useDreEntriesByLine(
         q = q.eq("dre_group", cleaned);
       }
       if (cc) q = q.eq("cost_center_id", cc);
-      if (bu) q = q.eq("business_unit", bu);
+      // business_unit lives on dre_base only; intentionally not filtered here
+      void bu;
       const { data } = await q;
       return (data ?? []).map((r) => ({
         ...r,
