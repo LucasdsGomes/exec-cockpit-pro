@@ -9,50 +9,183 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppRouteImport } from './routes/_app'
+import { Route as AppIndexRouteImport } from './routes/_app.index'
+import { Route as AppProjecaoBalancoRouteImport } from './routes/_app.projecao-balanco'
+import { Route as AppFluxoDeCaixaRouteImport } from './routes/_app.fluxo-de-caixa'
+import { Route as AppDreRouteImport } from './routes/_app.dre'
+import { Route as AppCicloFinanceiroRouteImport } from './routes/_app.ciclo-financeiro'
+import { Route as AppAdminRouteImport } from './routes/_app.admin'
 
-const IndexRoute = IndexRouteImport.update({
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProjecaoBalancoRoute = AppProjecaoBalancoRouteImport.update({
+  id: '/projecao-balanco',
+  path: '/projecao-balanco',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppFluxoDeCaixaRoute = AppFluxoDeCaixaRouteImport.update({
+  id: '/fluxo-de-caixa',
+  path: '/fluxo-de-caixa',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDreRoute = AppDreRouteImport.update({
+  id: '/dre',
+  path: '/dre',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCicloFinanceiroRoute = AppCicloFinanceiroRouteImport.update({
+  id: '/ciclo-financeiro',
+  path: '/ciclo-financeiro',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminRoute = AppAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AppRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
+  '/': typeof AppIndexRoute
+  '/admin': typeof AppAdminRoute
+  '/ciclo-financeiro': typeof AppCicloFinanceiroRoute
+  '/dre': typeof AppDreRoute
+  '/fluxo-de-caixa': typeof AppFluxoDeCaixaRoute
+  '/projecao-balanco': typeof AppProjecaoBalancoRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
+  '/admin': typeof AppAdminRoute
+  '/ciclo-financeiro': typeof AppCicloFinanceiroRoute
+  '/dre': typeof AppDreRoute
+  '/fluxo-de-caixa': typeof AppFluxoDeCaixaRoute
+  '/projecao-balanco': typeof AppProjecaoBalancoRoute
+  '/': typeof AppIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
+  '/_app': typeof AppRouteWithChildren
+  '/_app/admin': typeof AppAdminRoute
+  '/_app/ciclo-financeiro': typeof AppCicloFinanceiroRoute
+  '/_app/dre': typeof AppDreRoute
+  '/_app/fluxo-de-caixa': typeof AppFluxoDeCaixaRoute
+  '/_app/projecao-balanco': typeof AppProjecaoBalancoRoute
+  '/_app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/admin'
+    | '/ciclo-financeiro'
+    | '/dre'
+    | '/fluxo-de-caixa'
+    | '/projecao-balanco'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/admin'
+    | '/ciclo-financeiro'
+    | '/dre'
+    | '/fluxo-de-caixa'
+    | '/projecao-balanco'
+    | '/'
+  id:
+    | '__root__'
+    | '/_app'
+    | '/_app/admin'
+    | '/_app/ciclo-financeiro'
+    | '/_app/dre'
+    | '/_app/fluxo-de-caixa'
+    | '/_app/projecao-balanco'
+    | '/_app/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
+  AppRoute: typeof AppRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
+    '/_app': {
+      id: '/_app'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/': {
+      id: '/_app/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/projecao-balanco': {
+      id: '/_app/projecao-balanco'
+      path: '/projecao-balanco'
+      fullPath: '/projecao-balanco'
+      preLoaderRoute: typeof AppProjecaoBalancoRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/fluxo-de-caixa': {
+      id: '/_app/fluxo-de-caixa'
+      path: '/fluxo-de-caixa'
+      fullPath: '/fluxo-de-caixa'
+      preLoaderRoute: typeof AppFluxoDeCaixaRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/dre': {
+      id: '/_app/dre'
+      path: '/dre'
+      fullPath: '/dre'
+      preLoaderRoute: typeof AppDreRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/ciclo-financeiro': {
+      id: '/_app/ciclo-financeiro'
+      path: '/ciclo-financeiro'
+      fullPath: '/ciclo-financeiro'
+      preLoaderRoute: typeof AppCicloFinanceiroRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin': {
+      id: '/_app/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AppAdminRouteImport
+      parentRoute: typeof AppRoute
     }
   }
 }
 
+interface AppRouteChildren {
+  AppAdminRoute: typeof AppAdminRoute
+  AppCicloFinanceiroRoute: typeof AppCicloFinanceiroRoute
+  AppDreRoute: typeof AppDreRoute
+  AppFluxoDeCaixaRoute: typeof AppFluxoDeCaixaRoute
+  AppProjecaoBalancoRoute: typeof AppProjecaoBalancoRoute
+  AppIndexRoute: typeof AppIndexRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppAdminRoute: AppAdminRoute,
+  AppCicloFinanceiroRoute: AppCicloFinanceiroRoute,
+  AppDreRoute: AppDreRoute,
+  AppFluxoDeCaixaRoute: AppFluxoDeCaixaRoute,
+  AppProjecaoBalancoRoute: AppProjecaoBalancoRoute,
+  AppIndexRoute: AppIndexRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
+  AppRoute: AppRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
