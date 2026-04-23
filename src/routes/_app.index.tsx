@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import {
   Activity,
   ArrowDownRight,
@@ -10,6 +11,7 @@ import {
   Timer,
   Download,
   FileSpreadsheet,
+  Inbox,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -30,6 +32,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SectionHeader } from "@/components/ui/section-header";
 import { InsightCard, type InsightLevel } from "@/components/ui/insight-card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { PeriodPresets } from "@/components/ui/period-presets";
 import {
   CHART_COLORS,
   CHART_GRID,
@@ -37,17 +41,19 @@ import {
   ChartTooltip,
   chartLegendStyle,
 } from "@/components/ui/chart-primitives";
-import {
-  alertas,
-  kpis,
-  orcadoRealizado,
-  proximosPagar,
-  proximosReceber,
-  caixaDiario,
-  tendencia12m,
-  sync,
-} from "@/lib/mock-data";
 import { BRL } from "@/lib/format";
+import { useCompany } from "@/lib/queries/company";
+import { useKpis } from "@/lib/queries/kpis";
+import {
+  useTrend12m,
+  useCashDaily,
+  useUpcomingPayables,
+  useUpcomingReceivables,
+  useAlerts,
+  useBudgetVsActual,
+} from "@/lib/queries/series";
+import { downloadCsv } from "@/lib/export-csv";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/")({
   head: () => ({
@@ -64,31 +70,69 @@ export const Route = createFileRoute("/_app/")({
 });
 
 function HomePage() {
+  const [period, setPeriod] = useState("30d");
+  const { data: company, isLoading: loadingCo } = useCompany();
+  const companyId = company?.id;
+  const { data: kpis, isLoading: loadingKpis } = useKpis(period, companyId);
+  const { data: tendencia12m = [] } = useTrend12m(companyId);
+  const { data: caixaDiario = [] } = useCashDaily(companyId, period);
+  const { data: proximosPagar = [] } = useUpcomingPayables(companyId, 14);
+  const { data: proximosReceber = [] } = useUpcomingReceivables(companyId, 14);
+  const { data: alertas = [] } = useAlerts(companyId);
+  const { data: orcadoRealizado = [] } = useBudgetVsActual(companyId, period);
+
+  const exportCsv = () => {
+    if (!kpis) return;
+    downloadCsv(
+      [
+        { indicador: "Receita Líquida", valor: kpis.receitaLiquida },
+        { indicador: "EBITDA", valor: kpis.ebitda },
+        { indicador: "Resultado Líquido", valor: kpis.resultadoLiquido },
+        { indicador: "Saldo de Caixa", valor: kpis.saldoCaixa },
+        { indicador: "A Pagar 7d", valor: kpis.contasPagar7d },
+        { indicador: "A Receber 7d", valor: kpis.contasReceber7d },
+        { indicador: "PMR (dias)", valor: kpis.pmr },
+        { indicador: "PMP (dias)", valor: kpis.pmp },
+        { indicador: "Ciclo Financeiro (dias)", valor: kpis.cicloFinanceiro },
+      ],
+      `home_kpis_${kpis.range.start}_${kpis.range.end}`,
+      [
+        { key: "indicador", label: "Indicador" },
+        { key: "valor", label: "Valor" },
+      ],
+    );
+    toast.success("CSV exportado");
+  };
+
+  const loading = loadingCo || loadingKpis || !kpis;
+
   return (
     <div className="space-y-6">
       {/* Heading */}
       <SectionHeader
         eyebrow="Cockpit Executivo"
-        title="Visão geral da operação"
-        description={`Última sincronização ${sync.ultima} · ${sync.fonte}`}
+        title={company?.name ? `${company.name} · Visão geral` : "Visão geral da operação"}
+        description={kpis ? `Período: ${kpis.range.label}` : "Carregando dados…"}
         actions={
           <>
+            <PeriodPresets value={period} onChange={setPeriod} />
             <Badge
               variant="outline"
               className="border-success/40 text-success bg-success/10 gap-1.5 hidden md:inline-flex"
             >
-              <span className="size-1.5 rounded-full bg-success" /> Integração ativa
+              <span className="size-1.5 rounded-full bg-success" /> Lovable Cloud
             </Badge>
-            <Button variant="outline" size="sm" className="h-9 gap-2">
+            <Button variant="outline" size="sm" className="h-9 gap-2" onClick={() => toast.info("Geração de PDF em breve") }>
               <Download className="size-3.5" />
               PDF
             </Button>
             <Button
               size="sm"
               className="h-9 gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+              onClick={exportCsv}
             >
               <FileSpreadsheet className="size-3.5" />
-              Excel
+              CSV
             </Button>
           </>
         }
@@ -97,49 +141,55 @@ function HomePage() {
       {/* Primary KPIs — destaque executivo */}
       <div>
         <div className="text-eyebrow mb-2.5">Resultado do mês</div>
+        {loading ? (
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+            {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
+          </div>
+        ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
           <KpiCard
             label="Receita Líquida"
-            value={BRL(kpis.receitaLiquida)}
-            delta={kpis.receitaLiquidaVar}
+            value={BRL(kpis!.receitaLiquida)}
+            delta={kpis!.receitaLiquidaVar}
             hint="vs. mês anterior"
             icon={TrendingUp}
             accent
           />
           <KpiCard
             label="EBITDA"
-            value={BRL(kpis.ebitda)}
-            delta={kpis.ebitdaVar}
-            hint={`Margem ${kpis.margemEbitda}%`}
+            value={BRL(kpis!.ebitda)}
+            delta={kpis!.ebitdaVar}
+            hint={`Margem ${kpis!.margemEbitda.toFixed(1)}%`}
             icon={Activity}
           />
           <KpiCard
             label="Resultado Líquido"
-            value={BRL(kpis.resultadoLiquido)}
-            delta={kpis.resultadoLiquidoVar}
+            value={BRL(kpis!.resultadoLiquido)}
+            delta={kpis!.resultadoLiquidoVar}
             hint="vs. mês anterior"
             icon={ArrowUpRight}
           />
           <KpiCard
             label="Saldo de Caixa"
-            value={BRL(kpis.saldoCaixa)}
-            delta={kpis.saldoCaixaVar}
-            hint="3 contas bancárias"
+            value={BRL(kpis!.saldoCaixa)}
+            delta={kpis!.saldoCaixaVar}
+            hint={`${kpis!.contasBancarias} contas bancárias`}
             icon={Wallet}
           />
           <KpiCard
             label="Geração de Caixa"
-            value={BRL(kpis.geracaoCaixa)}
-            hint="Mês corrente"
+            value={BRL(kpis!.geracaoCaixa)}
+            hint="Próx. 7 dias (líquido)"
             icon={Banknote}
           />
           <KpiCard
             label="Projeção 30d"
-            value={BRL(kpis.projecaoCaixa30d)}
+            value={BRL(kpis!.projecaoCaixa30d)}
             hint="Caixa projetado"
             icon={CalendarClock}
           />
         </div>
+        )}
       </div>
 
       {/* Secondary KPIs */}
@@ -148,35 +198,35 @@ function HomePage() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <KpiCard
             label="A Pagar · 7d"
-            value={BRL(kpis.contasPagar7d)}
+            value={BRL(kpis?.contasPagar7d ?? 0)}
             hint="Próximas obrigações"
             icon={ArrowDownRight}
             size="sm"
           />
           <KpiCard
             label="A Receber · 7d"
-            value={BRL(kpis.contasReceber7d)}
+            value={BRL(kpis?.contasReceber7d ?? 0)}
             hint="Recebíveis"
             icon={ArrowUpRight}
             size="sm"
           />
           <KpiCard
             label="PMR"
-            value={`${kpis.pmr} dias`}
+            value={`${(kpis?.pmr ?? 0).toFixed(0)} dias`}
             hint="Prazo médio de recebimento"
             icon={Timer}
             size="sm"
           />
           <KpiCard
             label="PMP"
-            value={`${kpis.pmp} dias`}
+            value={`${(kpis?.pmp ?? 0).toFixed(0)} dias`}
             hint="Prazo médio de pagamento"
             icon={Timer}
             size="sm"
           />
           <KpiCard
             label="Ciclo Financeiro"
-            value={`${kpis.cicloFinanceiro} dias`}
+            value={`${(kpis?.cicloFinanceiro ?? 0).toFixed(0)} dias`}
             hint="PMR + PME − PMP"
             icon={Activity}
             size="sm"
