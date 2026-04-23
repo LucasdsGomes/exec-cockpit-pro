@@ -377,7 +377,7 @@ function HomePage() {
             <CardTitle className="text-base">Orçado vs Realizado</CardTitle>
             <p className="text-xs text-muted-foreground mt-1">Mês corrente</p>
           </CardHeader>
-          <CardContent className="h-72 pl-0">
+          <CardContent className="h-56 sm:h-64 lg:h-72 pl-0">
             <ResponsiveContainer>
               <BarChart
                 data={orcadoRealizado}
@@ -444,7 +444,7 @@ function HomePage() {
               <LegendDot color={CHART_COLORS.accent} label="Saldo" />
             </div>
           </CardHeader>
-          <CardContent className="h-72 pl-0">
+          <CardContent className="h-56 sm:h-64 lg:h-72 pl-0">
             <ResponsiveContainer>
               <ComposedChart data={caixaDiario} margin={{ top: 8, right: 16, bottom: 0, left: 8 }}>
                 <CartesianGrid strokeDasharray="2 4" stroke={CHART_GRID} vertical={false} />

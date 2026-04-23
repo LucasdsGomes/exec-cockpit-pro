@@ -86,15 +86,15 @@ function AdminPage() {
 
   return (
     <div className="space-y-5">
-      <header className="flex items-end justify-between gap-4 flex-wrap">
+      <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 md:gap-4">
         <div>
           <div className="text-[11px] uppercase tracking-[0.2em] text-primary font-medium">Configurações</div>
-          <h1 className="text-2xl font-semibold tracking-tight mt-1">Administração</h1>
+          <h1 className="text-xl md:text-2xl font-semibold tracking-tight mt-1">Administração</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {company?.name ?? "—"} · Integrações OMIE, DE-PARA gerencial e ajustes
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button variant="outline" onClick={handleReclassify} disabled={reclassify.isPending} className="gap-2">
             {reclassify.isPending ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
             Reprocessar
