@@ -25,6 +25,7 @@ import { DreLineDrilldown } from "@/components/dre/DreLineDrilldown";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 export const Route = createFileRoute("/_app/dre")({
+  // route config
   head: () => ({
     meta: [
       { title: "DRE — Hitech Electric" },
