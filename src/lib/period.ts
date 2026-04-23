@@ -20,7 +20,7 @@ export function periodToRange(preset: string, ref: Date = new Date()): DateRange
   let start = new Date(today);
   let label = "30 dias";
 
-  switch (preset as PeriodPreset) {
+  switch (preset) {
     case "hoje":
       label = "Hoje";
       break;
