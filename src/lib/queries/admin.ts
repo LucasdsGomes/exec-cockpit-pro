@@ -329,6 +329,72 @@ export function useInitialBalances(companyId: string | null | undefined) {
   });
 }
 
+export interface BankAccountLite {
+  id: string;
+  name: string;
+  bank_name: string | null;
+}
+
+export function useBankAccounts(companyId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["bankAccounts", companyId],
+    enabled: !!companyId,
+    queryFn: async (): Promise<BankAccountLite[]> => {
+      const { data } = await supabase
+        .from("bank_accounts")
+        .select("id, name, bank_name")
+        .eq("company_id", companyId!)
+        .eq("active", true)
+        .order("name");
+      return (data ?? []) as BankAccountLite[];
+    },
+  });
+}
+
+export function useSeedInitialBalances(companyId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      if (!companyId) throw new Error("Empresa não selecionada");
+      const { data, error } = await supabase.rpc("seed_initial_balances_from_bank_accounts", {
+        _company: companyId,
+        _reference_date: new Date().toISOString().slice(0, 10),
+      });
+      if (error) throw error;
+      return data as { inserted: number };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["initialBalances", companyId] });
+    },
+  });
+}
+
+export function useBatchUpdateInitialBalances(companyId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (updates: { id: string; amount: number }[]) => {
+      if (!companyId) throw new Error("Empresa não selecionada");
+      for (const u of updates) {
+        const { error } = await supabase
+          .from("initial_balances")
+          .update({ amount: u.amount })
+          .eq("id", u.id);
+        if (error) throw error;
+      }
+      // Recompute balance projection for today
+      const today = new Date().toISOString().slice(0, 10);
+      await supabase.rpc("compute_balance_projection", { _company: companyId, _date: today });
+      await supabase.rpc("snapshot_kpis", { _company: companyId, _date: today });
+      return updates.length;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["initialBalances", companyId] });
+      qc.invalidateQueries({ queryKey: ["balance", companyId] });
+      qc.invalidateQueries({ queryKey: ["kpis"] });
+    },
+  });
+}
+
 export interface UnclassifiedEntry {
   id: string;
   competence_date: string;

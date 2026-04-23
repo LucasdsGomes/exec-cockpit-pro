@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,13 +7,16 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Trash2, Plus } from "lucide-react";
+import { Trash2, Plus, Wallet, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { BRL } from "@/lib/format";
 import {
   useInitialBalances,
   useUpsertInitialBalance,
   useDeleteInitialBalance,
+  useBankAccounts,
+  useSeedInitialBalances,
+  useBatchUpdateInitialBalances,
 } from "@/lib/queries/admin";
 
 const TYPES = [
@@ -30,6 +33,9 @@ export function InitialBalancesTab({ companyId }: { companyId: string | null | u
   const list = useInitialBalances(companyId);
   const upsert = useUpsertInitialBalance(companyId);
   const del = useDeleteInitialBalance(companyId);
+  const banks = useBankAccounts(companyId);
+  const seed = useSeedInitialBalances(companyId);
+  const batchUpdate = useBatchUpdateInitialBalances(companyId);
 
   const [form, setForm] = useState({
     account_label: "",
@@ -37,6 +43,44 @@ export function InitialBalancesTab({ companyId }: { companyId: string | null | u
     amount: "",
     reference_date: new Date().toISOString().slice(0, 10),
   });
+
+  // Wizard state: bank-account driven balances
+  const bankBalances = useMemo(
+    () => (list.data ?? []).filter((b) => b.bank_account_id),
+    [list.data],
+  );
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const d: Record<string, string> = {};
+    for (const b of bankBalances) d[b.id] = String(b.amount ?? 0).replace(".", ",");
+    setDraft(d);
+  }, [bankBalances]);
+
+  const handleSeed = async () => {
+    await toast.promise(seed.mutateAsync(), {
+      loading: "Criando linhas para cada conta…",
+      success: (r) => `${r?.inserted ?? 0} contas adicionadas`,
+      error: (e) => `Erro: ${e.message}`,
+    });
+  };
+
+  const handleSaveAll = async () => {
+    const updates = bankBalances.map((b) => ({
+      id: b.id,
+      amount: Number((draft[b.id] ?? "0").replace(",", ".")) || 0,
+    }));
+    await toast.promise(batchUpdate.mutateAsync(updates), {
+      loading: "Salvando saldos e recalculando caixa…",
+      success: (n) => `${n} saldos salvos · projeção atualizada`,
+      error: (e) => `Erro: ${e.message}`,
+    });
+  };
+
+  const showSeedCta = (banks.data ?? []).length > 0 && bankBalances.length === 0;
+  const totalBank = bankBalances.reduce(
+    (sum, b) => sum + (Number((draft[b.id] ?? "0").replace(",", ".")) || 0),
+    0,
+  );
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,6 +102,64 @@ export function InitialBalancesTab({ companyId }: { companyId: string | null | u
 
   return (
     <div className="space-y-4">
+      {/* Wizard de saldo inicial por conta bancária */}
+      <Card className="border-primary/30 bg-card surface-card" style={{ backgroundImage: "var(--gradient-kpi-accent)" }}>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Wallet className="size-4 text-primary" /> Saldo de abertura por conta bancária
+          </CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">
+            Informe o saldo atual de cada conta para o caixa do balanço refletir a realidade. {(banks.data ?? []).length} contas ativas.
+          </p>
+        </CardHeader>
+        <CardContent>
+          {showSeedCta ? (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3">
+              <div className="text-sm">
+                <strong>Nenhum saldo inicial vinculado às contas.</strong> Clique para criar uma linha por conta bancária.
+              </div>
+              <Button onClick={handleSeed} disabled={seed.isPending} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5">
+                <Sparkles className="size-3.5" /> Criar linhas
+              </Button>
+            </div>
+          ) : bankBalances.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhuma conta bancária ativa encontrada.</p>
+          ) : (
+            <>
+              <div className="space-y-2">
+                {bankBalances.map((b) => (
+                  <div key={b.id} className="grid grid-cols-12 gap-2 items-center text-sm">
+                    <div className="col-span-7 truncate">{b.account_label ?? "—"}</div>
+                    <div className="col-span-3">
+                      <Input
+                        inputMode="decimal"
+                        value={draft[b.id] ?? ""}
+                        onChange={(e) => setDraft({ ...draft, [b.id]: e.target.value })}
+                        className="h-8 text-right tabular-nums"
+                        placeholder="0,00"
+                      />
+                    </div>
+                    <div className="col-span-2 text-xs text-muted-foreground text-right">{b.reference_date}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 flex items-center justify-between border-t border-border/60 pt-3">
+                <div className="text-sm">
+                  Total: <span className="font-semibold tabular-nums">{BRL(totalBank)}</span>
+                </div>
+                <Button
+                  onClick={handleSaveAll}
+                  disabled={batchUpdate.isPending}
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                  Salvar tudo e recalcular
+                </Button>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">

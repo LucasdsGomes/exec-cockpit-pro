@@ -71,10 +71,10 @@ function BalancoPage() {
         <Card className="border-warning/40 bg-warning/5">
           <CardContent className="py-3 flex items-center justify-between gap-4">
             <div className="text-sm">
-              <strong>Saldos iniciais não cadastrados.</strong> A projeção está incompleta sem o caixa de abertura e empréstimos.
+              <strong>Saldo de caixa zerado.</strong> Cadastre o saldo de abertura de cada conta bancária para a projeção refletir o caixa real.
             </div>
-            <Link to="/admin">
-              <Button size="sm" variant="outline">Cadastrar saldos</Button>
+            <Link to="/admin" search={{ tab: "saldos" } as never}>
+              <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90">Cadastrar saldos</Button>
             </Link>
           </CardContent>
         </Card>
