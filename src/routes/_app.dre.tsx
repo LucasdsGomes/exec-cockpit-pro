@@ -109,7 +109,7 @@ function DREPage() {
         }
       />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard label="Receita líquida" value={BRL(kpis?.receitaLiquida ?? 0)} delta={kpis?.receitaLiquidaVar ?? 0} icon={TrendingUp} hint="vs período anterior" />
         <KpiCard label="Margem bruta" value={`${marginGross(dre).toFixed(1)}%`} icon={Percent} hint="Bruta / Receita líq." />
         <KpiCard label="EBITDA" value={BRL(kpis?.ebitda ?? 0)} delta={kpis?.ebitdaVar ?? 0} icon={Activity} hint={`Margem ${(kpis?.margemEbitda ?? 0).toFixed(1)}%`} accent />

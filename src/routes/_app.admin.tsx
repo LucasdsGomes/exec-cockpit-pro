@@ -107,7 +107,7 @@ function AdminPage() {
       </header>
 
       <Tabs defaultValue="integracoes">
-        <TabsList className="bg-card border border-border">
+        <TabsList className="bg-card border border-border w-full justify-start overflow-x-auto tabs-scroll h-auto flex-nowrap">
           <TabsTrigger value="integracoes">Integrações</TabsTrigger>
           <TabsTrigger value="depara">DE-PARA ({mappings.data?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="saldos">Saldos iniciais</TabsTrigger>
@@ -214,7 +214,7 @@ function AdminPage() {
                 <Skeleton className="h-64" />
               ) : (
                 <div className="overflow-auto max-h-[600px]">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-sm min-w-[640px]">
                     <thead className="sticky top-0 bg-card">
                       <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
                         <th className="py-2.5">Código</th>
@@ -297,7 +297,8 @@ function AdminPage() {
               ) : (unclassified.data ?? []).length === 0 ? (
                 <p className="text-sm text-muted-foreground">Sem lançamentos pendentes 🎉</p>
               ) : (
-                <table className="w-full text-sm">
+                <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[600px]">
                   <thead>
                     <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
                       <th className="py-2.5">Data</th>
@@ -321,6 +322,7 @@ function AdminPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </CardContent>
           </Card>

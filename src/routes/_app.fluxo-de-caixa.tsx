@@ -125,7 +125,7 @@ function FluxoCaixa() {
       )}
 
       <Tabs defaultValue={isFuture ? "projecao" : "historico"} value={isFuture ? undefined : "historico"}>
-        <TabsList className="bg-card border border-border h-9">
+        <TabsList className="bg-card border border-border h-9 w-full sm:w-auto justify-start overflow-x-auto tabs-scroll">
           <TabsTrigger value="projecao" disabled={!isFuture}>Projeção</TabsTrigger>
           <TabsTrigger value="calendario">Calendário</TabsTrigger>
           <TabsTrigger value="historico">Histórico</TabsTrigger>
@@ -149,7 +149,7 @@ function FluxoCaixa() {
                 )}
               </div>
             </CardHeader>
-            <CardContent className="h-80 pt-2">
+            <CardContent className="h-64 sm:h-72 lg:h-80 pt-2 px-2 sm:px-6">
               {loadingProj ? <Skeleton className="h-full" /> : !projection || projection.series.length === 0 ? (
                 <div className="h-full grid place-items-center text-sm text-muted-foreground">Sem dados para projetar.</div>
               ) : (
@@ -212,7 +212,8 @@ function FluxoCaixa() {
                   Sem previsão DFC carregada para o horizonte.
                 </div>
               ) : (
-                <table className="w-full text-sm">
+                <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[420px]">
                   <tbody>
                     {forecastBlocks.map((b) => (
                       <Fragment key={b.tipo}>
@@ -239,6 +240,7 @@ function FluxoCaixa() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -298,7 +300,7 @@ function FluxoCaixa() {
                   <Legend />
                 </div>
               </CardHeader>
-              <CardContent className="h-72 pt-2">
+              <CardContent className="h-56 sm:h-64 lg:h-72 pt-2 px-2 sm:px-6">
                 {loadingDaily ? <Skeleton className="h-full" /> : caixaDiario.length === 0 ? (
                   <div className="h-full grid place-items-center text-sm text-muted-foreground">Sem movimentações no período.</div>
                 ) : (
