@@ -22,6 +22,7 @@ import { downloadCsv } from "@/lib/export-csv";
 import { toast } from "sonner";
 import { downloadPdfReport } from "@/lib/export-pdf";
 import { DreLineDrilldown } from "@/components/dre/DreLineDrilldown";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export const Route = createFileRoute("/_app/dre")({
   head: () => ({
@@ -116,7 +117,7 @@ function DREPage() {
       </div>
 
       <Tabs defaultValue="realizado">
-        <TabsList className="bg-card border border-border h-9">
+        <TabsList className="bg-card border border-border h-9 w-full sm:w-auto justify-start overflow-x-auto tabs-scroll">
           <TabsTrigger value="realizado">Realizado</TabsTrigger>
           <TabsTrigger value="orcado">Orçado</TabsTrigger>
           <TabsTrigger value="comparativo">Orçado vs Realizado</TabsTrigger>
@@ -128,7 +129,7 @@ function DREPage() {
               <CardTitle className="text-base">Construção do resultado · waterfall</CardTitle>
               <p className="text-xs text-muted-foreground">Da receita líquida ao lucro líquido</p>
             </CardHeader>
-            <CardContent className="h-72 pt-2">
+            <CardContent className="h-56 sm:h-64 lg:h-72 pt-2 px-2 sm:px-6">
               <DREWaterfall steps={waterfall} />
             </CardContent>
           </Card>
@@ -192,6 +193,10 @@ function EmptyState({ message }: { message: string }) {
 }
 
 function DRETable({ data, onSelect }: { data: DRELine[]; onSelect?: (label: string) => void }) {
+  const isMobile = useIsMobile();
+  if (isMobile) {
+    return <DREList data={data} onSelect={onSelect} />;
+  }
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -253,6 +258,7 @@ function DRETable({ data, onSelect }: { data: DRELine[]; onSelect?: (label: stri
 }
 
 function DREWaterfall({ steps }: { steps: { name: string; value: number; type: "total" | "subtotal" | "neg" | "pos" }[] }) {
+  const isMobile = useIsMobile();
   if (!steps.length) {
     return <div className="h-full grid place-items-center text-sm text-muted-foreground">Sem dados para o período.</div>;
   }
@@ -279,8 +285,23 @@ function DREWaterfall({ steps }: { steps: { name: string; value: number; type: "
     <ResponsiveContainer>
       <BarChart data={data} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} vertical={false} />
-        <XAxis dataKey="name" tick={{ ...CHART_AXIS_TICK, fontSize: 10 }} axisLine={false} tickLine={false} interval={0} />
-        <YAxis tick={CHART_AXIS_TICK} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v / 1_000_000).toFixed(1)}M`} />
+        <XAxis
+          dataKey="name"
+          tick={{ ...CHART_AXIS_TICK, fontSize: isMobile ? 9 : 10 }}
+          axisLine={false}
+          tickLine={false}
+          interval={isMobile ? 1 : 0}
+          angle={isMobile ? -25 : 0}
+          textAnchor={isMobile ? "end" : "middle"}
+          height={isMobile ? 50 : 30}
+        />
+        <YAxis
+          tick={CHART_AXIS_TICK}
+          axisLine={false}
+          tickLine={false}
+          tickFormatter={(v) => `${(v / 1_000_000).toFixed(1)}M`}
+          width={isMobile ? 36 : 50}
+        />
         <ReferenceLine y={0} stroke={CHART_GRID} />
         <Tooltip
           cursor={{ fill: "oklch(1 0 0 / 4%)" }}
