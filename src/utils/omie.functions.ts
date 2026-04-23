@@ -8,7 +8,8 @@ import { runOmieSync, pingOmie } from "@/integrations/omie/sync.server";
 import { OMIE_PRIORITY_ORDER, type OmieEndpointKey } from "@/integrations/omie/endpoints";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
-async function assertCanEdit(supabase: Awaited<ReturnType<typeof requireSupabaseAuth>> extends never ? never : any, companyId: string) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function assertCanEdit(supabase: any, companyId: string) {
   const { data, error } = await supabase.rpc("can_edit_company", { _company_id: companyId });
   if (error) throw new Error(error.message);
   if (!data) throw new Error("Forbidden: insufficient permissions for this company");
