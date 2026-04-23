@@ -1,74 +1,66 @@
 
 
-# O que falta — visão geral pós-implementações
+# O que falta — checkpoint
 
-## Status atual
+## Status
 
 | Frente | Status |
 |---|---|
-| Filtros globais funcionais (Unidade, Conta, CC, Modo) | ✅ |
-| Backfill de vínculos OMIE (bank_account_id, supplier, customer) | ✅ |
-| Wizard de saldo inicial por conta bancária | ✅ |
-| Sync de extratos OMIE (`ListarExtrato`) + trigger para `dfc_realized_base` | ✅ |
-| `cash_date` populado a partir de `data_pagamento` | ✅ |
-| KPI de Saldo de Caixa funcionando | ⚠️ depende do usuário cadastrar saldos iniciais e/ou rodar sync de extratos |
+| Filtros globais funcionais | ✅ |
+| Backfill OMIE (banco/cliente/fornecedor) | ✅ |
+| Wizard de saldo inicial | ✅ |
+| Sync de extratos OMIE + trigger DFC realizado | ✅ |
+| `cash_date` via `data_pagamento` | ✅ |
+| Regras de Centro de Custo (Admin) | ✅ |
+| Reconciliação extrato ↔ títulos | ✅ |
+| Botão manual de extratos + diário no `run_daily_pipeline_all` | ✅ |
+| Badge de contagem + botão limpar filtros | ✅ |
+| Checklist de onboarding na Home | ✅ |
 
-## O que ainda falta — em ordem de impacto
+## O que ainda falta — em ordem
 
-### 1. Preencher `cost_center_id` (filtro de Centro de Custo / Unidade segue zerando)
+### 1. Erro de runtime atual (bloqueador silencioso)
 
-O backfill resolveu banco/cliente/fornecedor, mas o **centro de custo segue NULL** porque o payload OMIE de `distribuicao` está vazio nos títulos atuais. Sem isso, filtrar por CC ou Unidade zera tudo.
+`Failed to fetch dynamically imported module: virtual:tanstack-start-client-entry` — aparece no console agora. Provável import quebrado após últimas refatorações (algum arquivo apagado/renomeado ainda referenciado). Investigar `AppShell.tsx`, `_app.index.tsx`, `DiagnosticoTab.tsx` e `CostCenterRulesTab.tsx` recém-tocados. Resolver antes de avançar — pode estar mascarando bugs.
 
-**Solução em duas vias:**
-- **a)** Aba no Admin → Mapeamentos → "Atribuir Centro de Custo por regra" — permite criar regras (por categoria, fornecedor, descrição) que aplicam `cost_center_id` em massa nos lançamentos sem CC. Útil quando o ERP não preenche distribuição.
-- **b)** Campo manual de override em `ManualEntriesTab` para corrigir lançamentos pontuais (já existe estrutura — só falta UI de edição em massa).
+### 2. Cron diário de fato agendado (pg_cron)
 
-### 2. Botão "Sincronizar Extratos" + automação diária
+`run_daily_pipeline_all` foi atualizado, mas não há job `pg_cron` chamando-o todo dia às 6h. Sem isso, a automação só roda se alguém clicar manualmente. Criar:
+- Job `pg_cron` chamando `select run_daily_pipeline_all();` diariamente.
+- View "Última execução do pipeline" em Admin → Diagnóstico mostrando `cron.job_run_details` da última rodada.
 
-A função `runBankStatementsSync` está implementada, mas:
-- Falta botão visível em **Admin → Diagnóstico** para disparo manual (hoje só é chamado via sync completo).
-- Falta incluir no `run_daily_pipeline_all` para rodar todo dia às 6h.
-- Falta status visível "Último extrato sincronizado em…" por conta bancária.
+### 3. Status visível por conta bancária (extrato)
 
-### 3. UX dos filtros — empty state inteligente
+Hoje o usuário não sabe se cada conta foi sincronizada. Adicionar em Admin → Saldos Iniciais (ou nova aba "Contas Bancárias") coluna "Último extrato em…" e botão por conta para resync individual.
 
-Quando o filtro retorna 0 dados, hoje a tela mostra KPIs zerados sem explicação. Adicionar:
-- Aviso contextual: *"Nenhum lançamento para Conta X no período. [Limpar filtro]"*.
-- Badge nos seletores do top bar: *"Conta: BB · 142 lançamentos"* — usuário vê na hora se o filtro casou.
-- Botão "Limpar filtros" visível no top bar (já existe `reset()` no contexto).
+### 4. Drill-down DRE → lançamentos
 
-### 4. Onboarding guiado (primeira execução)
+Clicar em uma linha do DRE (ex.: "Despesas Operacionais — R$ 45k") abre modal listando os `financial_entries` que compõem aquele número, com filtros respeitando o período/unidade ativos. Aumenta confiança no número e ajuda auditoria.
 
-Hoje o usuário precisa adivinhar a ordem: configurar OMIE → sincronizar → cadastrar saldos → ver dashboard. Adicionar checklist na Home quando faltarem etapas:
-- ☐ Credenciais OMIE configuradas
-- ☐ Sync inicial executado
-- ☐ Saldos iniciais cadastrados
-- ☐ Centros de custo mapeados (se aplicável)
+### 5. Override manual de Centro de Custo em massa
 
-### 5. Conciliação extrato ↔ títulos (qualidade do realizado)
+`ManualEntriesTab` permite criar lançamentos manuais, mas não editar CC de lançamentos OMIE existentes em lote. Adicionar tela "Lançamentos sem CC" com seleção múltipla e atribuição de CC — complementa as regras automáticas para casos pontuais.
 
-Quando o extrato OMIE entrar em `bank_movements`, idealmente cada movimento deveria ser linkado ao título correspondente em `financial_entries` (via `financial_entry_id`, que já existe na coluna). Hoje fica solto. Sem isso, o usuário pode contar duas vezes (título previsto + movimento realizado) no mesmo dia se misturar visões.
+### 6. Cenários múltiplos de orçamento
 
-**Implementação:** função SQL `reconcile_bank_movements(company)` que faz match por (valor, data ±2 dias, conta) e popula `financial_entry_id`. Botão em Admin para rodar.
+Schema `budget_scenario` já suporta `orcado | revisado | tendencia`, mas a UI só lê `orcado`. Adicionar seletor de cenário em `BudgetTab` e nas comparações Realizado vs Orçado.
 
-### 6. Pendências menores
+### 7. Importação OFX/CSV manual (fallback)
 
-- **Erro de runtime atual**: `Failed to fetch dynamically imported module` — precisa verificar se ficou alguma referência quebrada após as últimas refatorações.
-- **Drill-down DRE**: clicar em "Despesas Operacionais" abre lista dos lançamentos que compõem aquela linha (próxima frente de UX).
-- **Cenários de orçamento**: hoje só existe 1 cenário (`orcado`), o schema já suporta múltiplos (`budget_scenario` enum) — falta UI.
+Quando OMIE não tem `nCodCC` configurado para uma conta, o `ListarExtrato` falha. Permitir upload de OFX/CSV em Admin → Saldos Iniciais como fallback popula `bank_movements` direto.
 
 ## Ordem sugerida
 
-1. **Frente 1 (Centro de Custo via regras)** — destrava o filtro de Unidade/CC que ainda zera.
-2. **Frente 6 (corrigir runtime error)** — bloqueador silencioso.
-3. **Frente 2 (botão extrato + cron diário)** — automação do realizado.
-4. **Frente 3 (UX dos filtros)** — confiança do usuário.
-5. **Frente 5 (conciliação)** — qualidade do dado.
-6. **Frente 4 (onboarding)** — escala para novos clientes.
+1. **Frente 1** — corrigir runtime error (essencial).
+2. **Frente 2** — agendar `pg_cron` diário (fecha o ciclo de automação).
+3. **Frente 3** — visibilidade do status de extrato por conta.
+4. **Frente 4** — drill-down do DRE (alto valor de UX).
+5. **Frente 5** — override manual de CC (complementa Frente 1 da rodada anterior).
+6. **Frentes 6 e 7** — incrementais.
 
-## Fora de escopo desta rodada
+## Fora de escopo
 
-- Importação de OFX/CSV manual.
-- Drill-down clicável no DRE.
-- Múltiplos cenários de orçamento.
+- Conciliação contábil completa (débito/crédito por plano de contas).
+- Multi-empresa com consolidação automática.
+- App mobile.
 
