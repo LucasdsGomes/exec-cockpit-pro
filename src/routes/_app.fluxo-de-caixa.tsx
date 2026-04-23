@@ -296,17 +296,20 @@ function SaldoCard({
   );
 }
 
-function Heatmap() {
-  const max = Math.max(...heatmap.map(h => h.valor));
+function Heatmap({ cells }: { cells: { dia: number; date: string; valor: number }[] }) {
+  if (!cells.length) {
+    return <div className="py-6 text-center text-xs text-muted-foreground">Sem vencimentos.</div>;
+  }
+  const max = Math.max(...cells.map((h) => h.valor), 1);
   return (
     <div>
       <div className="grid grid-cols-7 gap-1.5">
-        {heatmap.map((d) => {
+        {cells.map((d) => {
           const intensity = d.valor / max;
           return (
             <div
               key={d.dia}
-              title={`Dia ${d.dia}: ${BRL(d.valor)}`}
+              title={`${d.date}: ${BRL(d.valor)}`}
               className="aspect-square rounded-md grid place-items-center text-[10px] font-medium tabular-nums cursor-pointer transition-transform hover:scale-105 hover:ring-1 hover:ring-primary"
               style={{
                 background: `oklch(0.93 0.18 102 / ${0.06 + intensity * 0.55})`,
