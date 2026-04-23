@@ -257,7 +257,6 @@ function DRETable({ data, onSelect }: { data: DRELine[]; onSelect?: (label: stri
   );
 }
 
-function DREWaterfall({ steps }: { steps: { name: string; value: number; type: "total" | "subtotal" | "neg" | "pos" }[] }) {
 function DREList({ data, onSelect }: { data: DRELine[]; onSelect?: (label: string) => void }) {
   return (
     <div className="space-y-1.5">
@@ -316,7 +315,7 @@ function DREList({ data, onSelect }: { data: DRELine[]; onSelect?: (label: strin
   );
 }
 
-function DREWaterfallChart({ steps }: { steps: { name: string; value: number; type: "total" | "subtotal" | "neg" | "pos" }[] }) {
+function DREWaterfall({ steps }: { steps: { name: string; value: number; type: "total" | "subtotal" | "neg" | "pos" }[] }) {
   const isMobile = useIsMobile();
   if (!steps.length) {
     return <div className="h-full grid place-items-center text-sm text-muted-foreground">Sem dados para o período.</div>;
