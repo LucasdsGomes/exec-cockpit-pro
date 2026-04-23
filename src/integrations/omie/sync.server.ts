@@ -372,9 +372,8 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
   const end = opts.endDate ? new Date(opts.endDate) : today;
 
   const periodFilter = {
-    data_de: fmt(start),
-    data_ate: fmt(end),
-    filtrar_por_data_de: "EMISSAO",
+    dDtEmisDe: fmt(start),
+    dDtEmisAte: fmt(end),
   };
 
   const results: SyncRunResult["endpoints"] = [];
@@ -393,10 +392,10 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
         r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: {}, upsert: (item) => upsertBankAccount(item, opts.companyId) });
         break;
       case "clientes":
-        r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: { apenas_importado_api: "N" }, upsert: (item) => upsertCustomerOrSupplier(item, opts.companyId, "cliente") });
+        r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: { apenas_importado_api: "N", clientesFiltro: { cliente_fornecedor: "C" } }, upsert: (item) => upsertCustomerOrSupplier(item, opts.companyId, "cliente") });
         break;
       case "fornecedores":
-        r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: { apenas_importado_api: "N", filtrar_apenas_fornecedor: "S" }, upsert: (item) => upsertCustomerOrSupplier(item, opts.companyId, "fornecedor") });
+        r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: { apenas_importado_api: "N", clientesFiltro: { cliente_fornecedor: "F" } }, upsert: (item) => upsertCustomerOrSupplier(item, opts.companyId, "fornecedor") });
         break;
       case "contas_pagar":
         r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: periodFilter, upsert: (item, batchId) => upsertFinancialEntry(mapContaPagar(item, opts.companyId, batchId)) });
@@ -405,7 +404,7 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
         r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: periodFilter, upsert: (item, batchId) => upsertFinancialEntry(mapContaReceber(item, opts.companyId, batchId)) });
         break;
       case "movimentacoes_bancarias":
-        r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: { dDtInicial: fmt(start), dDtFinal: fmt(end) }, upsert: (item) => upsertBankMovement(item, opts.companyId) });
+        r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: { nPagina: 1, nRegPorPagina: 200, dDtInicial: fmt(start), dDtFinal: fmt(end) }, upsert: (item) => upsertBankMovement(item, opts.companyId) });
         break;
     }
     results.push(r);
