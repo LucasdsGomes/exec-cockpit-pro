@@ -18,6 +18,7 @@ import { Route as AppFluxoDeCaixaRouteImport } from './routes/_app.fluxo-de-caix
 import { Route as AppDreRouteImport } from './routes/_app.dre'
 import { Route as AppCicloFinanceiroRouteImport } from './routes/_app.ciclo-financeiro'
 import { Route as AppAdminRouteImport } from './routes/_app.admin'
+import { Route as ApiPublicHooksOmieSyncRouteImport } from './routes/api/public/hooks/omie-sync'
 
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
@@ -63,6 +64,11 @@ const AppAdminRoute = AppAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => AppRoute,
 } as any)
+const ApiPublicHooksOmieSyncRoute = ApiPublicHooksOmieSyncRouteImport.update({
+  id: '/api/public/hooks/omie-sync',
+  path: '/api/public/hooks/omie-sync',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -73,6 +79,7 @@ export interface FileRoutesByFullPath {
   '/dre': typeof AppDreRoute
   '/fluxo-de-caixa': typeof AppFluxoDeCaixaRoute
   '/projecao-balanco': typeof AppProjecaoBalancoRoute
+  '/api/public/hooks/omie-sync': typeof ApiPublicHooksOmieSyncRoute
 }
 export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
@@ -83,6 +90,7 @@ export interface FileRoutesByTo {
   '/fluxo-de-caixa': typeof AppFluxoDeCaixaRoute
   '/projecao-balanco': typeof AppProjecaoBalancoRoute
   '/': typeof AppIndexRoute
+  '/api/public/hooks/omie-sync': typeof ApiPublicHooksOmieSyncRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -95,6 +103,7 @@ export interface FileRoutesById {
   '/_app/fluxo-de-caixa': typeof AppFluxoDeCaixaRoute
   '/_app/projecao-balanco': typeof AppProjecaoBalancoRoute
   '/_app/': typeof AppIndexRoute
+  '/api/public/hooks/omie-sync': typeof ApiPublicHooksOmieSyncRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -107,6 +116,7 @@ export interface FileRouteTypes {
     | '/dre'
     | '/fluxo-de-caixa'
     | '/projecao-balanco'
+    | '/api/public/hooks/omie-sync'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/auth'
@@ -117,6 +127,7 @@ export interface FileRouteTypes {
     | '/fluxo-de-caixa'
     | '/projecao-balanco'
     | '/'
+    | '/api/public/hooks/omie-sync'
   id:
     | '__root__'
     | '/_app'
@@ -128,12 +139,14 @@ export interface FileRouteTypes {
     | '/_app/fluxo-de-caixa'
     | '/_app/projecao-balanco'
     | '/_app/'
+    | '/api/public/hooks/omie-sync'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   AuthRoute: typeof AuthRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  ApiPublicHooksOmieSyncRoute: typeof ApiPublicHooksOmieSyncRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -201,6 +214,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAdminRouteImport
       parentRoute: typeof AppRoute
     }
+    '/api/public/hooks/omie-sync': {
+      id: '/api/public/hooks/omie-sync'
+      path: '/api/public/hooks/omie-sync'
+      fullPath: '/api/public/hooks/omie-sync'
+      preLoaderRoute: typeof ApiPublicHooksOmieSyncRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -228,6 +248,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   AuthRoute: AuthRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  ApiPublicHooksOmieSyncRoute: ApiPublicHooksOmieSyncRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
