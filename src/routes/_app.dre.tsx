@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useCompany } from "@/lib/queries/company";
 import { useKpis } from "@/lib/queries/kpis";
 import { useDreLines, useDreWaterfall, type DRELine } from "@/lib/queries/dre";
+import { useFilters } from "@/lib/filters-context";
 import { downloadCsv } from "@/lib/export-csv";
 import { toast } from "sonner";
 import { downloadPdfReport } from "@/lib/export-pdf";
@@ -35,9 +36,10 @@ function DREPage() {
   const [period, setPeriod] = useState("mtd");
   const { data: company } = useCompany();
   const companyId = company?.id;
-  const { data: kpis } = useKpis(period, companyId);
-  const { data: dre = [], isLoading: loadingDre } = useDreLines(companyId, period);
-  const { data: waterfall = [] } = useDreWaterfall(companyId, period);
+  const filters = useFilters();
+  const { data: kpis } = useKpis(period, companyId, filters);
+  const { data: dre = [], isLoading: loadingDre } = useDreLines(companyId, period, filters);
+  const { data: waterfall = [] } = useDreWaterfall(companyId, period, filters);
 
   const exportCsv = () => {
     if (!dre.length) return;

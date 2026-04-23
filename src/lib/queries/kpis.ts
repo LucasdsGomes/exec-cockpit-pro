@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { periodToRange, previousRange, type DateRange } from "@/lib/period";
 import { computeDreSubtotals } from "@/lib/dre-subtotals";
+import type { GlobalFilters } from "@/lib/filters-context";
 
 export interface KpiSet {
   receitaLiquida: number;
@@ -24,13 +25,20 @@ export interface KpiSet {
   range: DateRange;
 }
 
-async function aggregateDre(companyId: string, range: DateRange): Promise<Map<string, number>> {
-  const { data } = await supabase
+async function aggregateDre(
+  companyId: string,
+  range: DateRange,
+  filters?: Pick<GlobalFilters, "costCenterId" | "businessUnit">,
+): Promise<Map<string, number>> {
+  let q = supabase
     .from("dre_base")
     .select("dre_group, amount_signed")
     .eq("company_id", companyId)
     .gte("competence_date", range.start)
     .lte("competence_date", range.end);
+  if (filters?.costCenterId) q = q.eq("cost_center_id", filters.costCenterId);
+  if (filters?.businessUnit) q = q.eq("business_unit", filters.businessUnit);
+  const { data } = await q;
   const totals = new Map<string, number>();
   for (const r of data ?? []) {
     const k = String(r.dre_group);
@@ -44,9 +52,16 @@ function pctVar(curr: number, prev: number): number {
   return ((curr - prev) / Math.abs(prev)) * 100;
 }
 
-export function useKpis(period: string, companyId: string | null | undefined) {
+export function useKpis(
+  period: string,
+  companyId: string | null | undefined,
+  filters?: Partial<GlobalFilters>,
+) {
+  const cc = filters?.costCenterId ?? null;
+  const bu = filters?.businessUnit ?? null;
+  const ba = filters?.bankAccountId ?? null;
   return useQuery({
-    queryKey: ["kpis", companyId, period],
+    queryKey: ["kpis", companyId, period, cc, bu, ba],
     enabled: !!companyId,
     queryFn: async (): Promise<KpiSet> => {
       const range = periodToRange(period);
@@ -56,30 +71,39 @@ export function useKpis(period: string, companyId: string | null | undefined) {
       const in7 = new Date(today.getTime() + 7 * 86_400_000).toISOString().slice(0, 10);
       const todayStr = today.toISOString().slice(0, 10);
 
+      const payQ = supabase
+        .from("payable_entries")
+        .select("amount, paid_amount")
+        .eq("company_id", companyId!)
+        .gte("due_date", todayStr)
+        .lte("due_date", in7);
+      const recQ = supabase
+        .from("receivable_entries")
+        .select("amount, received_amount")
+        .eq("company_id", companyId!)
+        .gte("due_date", todayStr)
+        .lte("due_date", in7);
+      if (cc) {
+        payQ.eq("cost_center_id", cc);
+        recQ.eq("cost_center_id", cc);
+      }
+
       const [
         currTotals, prevTotals,
         payables, receivables,
         accountsRes, snapshotRes,
       ] = await Promise.all([
-        aggregateDre(companyId!, range),
-        aggregateDre(companyId!, prev),
-        supabase
-          .from("payable_entries")
-          .select("amount, paid_amount")
-          .eq("company_id", companyId!)
-          .gte("due_date", todayStr)
-          .lte("due_date", in7),
-        supabase
-          .from("receivable_entries")
-          .select("amount, received_amount")
-          .eq("company_id", companyId!)
-          .gte("due_date", todayStr)
-          .lte("due_date", in7),
-        supabase
-          .from("bank_accounts")
-          .select("id")
-          .eq("company_id", companyId!)
-          .eq("active", true),
+        aggregateDre(companyId!, range, { costCenterId: cc, businessUnit: bu }),
+        aggregateDre(companyId!, prev, { costCenterId: cc, businessUnit: bu }),
+        payQ,
+        recQ,
+        ba
+          ? supabase.from("bank_accounts").select("id").eq("id", ba)
+          : supabase
+              .from("bank_accounts")
+              .select("id")
+              .eq("company_id", companyId!)
+              .eq("active", true),
         supabase
           .from("dashboard_kpi_snapshots")
           .select("*")
