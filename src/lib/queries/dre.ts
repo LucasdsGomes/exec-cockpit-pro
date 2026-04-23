@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { periodToRange, previousRange, type DateRange } from "@/lib/period";
+import { computeDreSubtotals, dreValueOf, type DreLineKey } from "@/lib/dre-subtotals";
 
 export interface DRELine {
   conta: string;
@@ -12,17 +13,20 @@ export interface DRELine {
   spark: number[];
 }
 
-const ORDER: { group: string; label: string; destaque?: DRELine["destaque"] }[] = [
-  { group: "Receita Bruta", label: "Receita Bruta" },
-  { group: "Deduções", label: "(-) Deduções", destaque: "negativo" },
-  { group: "Receita Líquida", label: "Receita Líquida", destaque: "subtotal" },
-  { group: "CMV", label: "(-) CMV", destaque: "negativo" },
-  { group: "Custos Diretos", label: "(-) Custos Diretos", destaque: "negativo" },
-  { group: "Margem Bruta", label: "Margem Bruta", destaque: "subtotal" },
-  { group: "Despesas Operacionais", label: "(-) Despesas Operacionais", destaque: "negativo" },
-  { group: "EBITDA", label: "EBITDA", destaque: "total" },
-  { group: "Resultado Financeiro", label: "Resultado Financeiro", destaque: "negativo" },
-  { group: "Lucro Líquido", label: "Lucro Líquido", destaque: "total" },
+const ORDER: { key: DreLineKey; label: string; destaque?: DRELine["destaque"] }[] = [
+  { key: "Receita Bruta", label: "Receita Bruta" },
+  { key: "Deduções", label: "(-) Deduções", destaque: "negativo" },
+  { key: "Receita Líquida", label: "Receita Líquida", destaque: "subtotal" },
+  { key: "Custos", label: "(-) CMV / Custos Diretos", destaque: "negativo" },
+  { key: "Margem Bruta", label: "Margem Bruta", destaque: "subtotal" },
+  { key: "Despesas Administrativas", label: "(-) Despesas Administrativas", destaque: "negativo" },
+  { key: "Despesas com Pessoal", label: "(-) Despesas com Pessoal", destaque: "negativo" },
+  { key: "Despesas Operacionais", label: "(-) Despesas Operacionais", destaque: "negativo" },
+  { key: "Despesas Tributárias", label: "(-) Despesas Tributárias", destaque: "negativo" },
+  { key: "Outras Saídas", label: "(-) Outras Saídas", destaque: "negativo" },
+  { key: "EBITDA", label: "EBITDA", destaque: "total" },
+  { key: "Resultado Financeiro", label: "(-) Resultado Financeiro", destaque: "negativo" },
+  { key: "Lucro Líquido", label: "Lucro Líquido", destaque: "total" },
 ];
 
 async function aggregate(companyId: string, range: DateRange) {
@@ -40,7 +44,7 @@ async function aggregate(companyId: string, range: DateRange) {
   return totals;
 }
 
-async function spark12m(companyId: string): Promise<Map<string, number[]>> {
+async function spark12m(companyId: string): Promise<Map<DreLineKey, number[]>> {
   const today = new Date();
   const start = new Date(today.getFullYear(), today.getMonth() - 11, 1);
   const startStr = start.toISOString().slice(0, 10);
@@ -51,15 +55,23 @@ async function spark12m(companyId: string): Promise<Map<string, number[]>> {
     .eq("company_id", companyId)
     .gte("competence_date", startStr)
     .lte("competence_date", endStr);
-  const result = new Map<string, number[]>();
-  for (const o of ORDER) result.set(o.group, Array(12).fill(0));
+  // Aggregate per-month analytical totals
+  const monthly: Map<string, number>[] = Array.from({ length: 12 }, () => new Map());
   for (const r of data ?? []) {
     const d = new Date(String(r.competence_date) + "T00:00:00");
     const idx = (d.getFullYear() - start.getFullYear()) * 12 + (d.getMonth() - start.getMonth());
     if (idx < 0 || idx > 11) continue;
-    const arr = result.get(String(r.dre_group));
-    if (!arr) continue;
-    arr[idx] += Number(r.amount_signed ?? 0);
+    const k = String(r.dre_group);
+    monthly[idx].set(k, (monthly[idx].get(k) ?? 0) + Number(r.amount_signed ?? 0));
+  }
+  // Compute subtotals per month and project per line key
+  const result = new Map<DreLineKey, number[]>();
+  for (const o of ORDER) result.set(o.key, Array(12).fill(0));
+  for (let i = 0; i < 12; i++) {
+    const sub = computeDreSubtotals(monthly[i]);
+    for (const o of ORDER) {
+      result.get(o.key)![i] = dreValueOf(sub, o.key);
+    }
   }
   return result;
 }
@@ -76,12 +88,14 @@ export function useDreLines(companyId: string | null | undefined, period: string
         aggregate(companyId!, prev),
         spark12m(companyId!),
       ]);
-      const receita = curr.get("Receita Líquida") ?? 0;
+      const currSub = computeDreSubtotals(curr);
+      const prvSub = computeDreSubtotals(prv);
+      const receita = currSub.receitaLiquida + currSub.outrasReceitas;
       const lines: DRELine[] = [];
       for (const o of ORDER) {
-        const v = curr.get(o.group) ?? 0;
+        const v = dreValueOf(currSub, o.key);
         if (v === 0 && o.destaque !== "subtotal" && o.destaque !== "total") continue;
-        const pv = prv.get(o.group) ?? 0;
+        const pv = dreValueOf(prvSub, o.key);
         const varAbs = v - pv;
         const varPct = pv ? (varAbs / Math.abs(pv)) * 100 : 0;
         lines.push({
@@ -91,7 +105,7 @@ export function useDreLines(companyId: string | null | undefined, period: string
           varAbs,
           varPct,
           destaque: o.destaque,
-          spark: sparks.get(o.group) ?? Array(12).fill(0),
+          spark: sparks.get(o.key) ?? Array(12).fill(0),
         });
       }
       return lines;
@@ -112,15 +126,15 @@ export function useDreWaterfall(companyId: string | null | undefined, period: st
     queryFn: async (): Promise<WaterfallStep[]> => {
       const range = periodToRange(period);
       const totals = await aggregate(companyId!, range);
-      const get = (k: string) => totals.get(k) ?? 0;
+      const sub = computeDreSubtotals(totals);
       const steps: WaterfallStep[] = [
-        { name: "Receita líquida", value: get("Receita Líquida"), type: "total" },
-        { name: "CMV", value: get("CMV") || get("Custos Diretos"), type: "neg" },
-        { name: "Margem bruta", value: get("Margem Bruta") || (get("Receita Líquida") + (get("CMV") || get("Custos Diretos"))), type: "subtotal" },
-        { name: "Desp. Op.", value: get("Despesas Operacionais"), type: "neg" },
-        { name: "EBITDA", value: get("EBITDA"), type: "total" },
-        { name: "Result. Fin.", value: get("Resultado Financeiro"), type: "neg" },
-        { name: "Lucro líquido", value: get("Lucro Líquido"), type: "total" },
+        { name: "Receita líquida", value: sub.receitaLiquida + sub.outrasReceitas, type: "total" },
+        { name: "Custos", value: sub.custos, type: "neg" },
+        { name: "Margem bruta", value: sub.margemBruta, type: "subtotal" },
+        { name: "Desp. Op.", value: sub.despesasOperacionaisTotal, type: "neg" },
+        { name: "EBITDA", value: sub.ebitda, type: "total" },
+        { name: "Result. Fin.", value: sub.resultadoFinanceiro, type: "neg" },
+        { name: "Lucro líquido", value: sub.lucroLiquido, type: "total" },
       ];
       return steps;
     },

@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { periodToRange, previousRange, type DateRange } from "@/lib/period";
+import { computeDreSubtotals } from "@/lib/dre-subtotals";
 
 export interface KpiSet {
   receitaLiquida: number;
@@ -23,15 +24,19 @@ export interface KpiSet {
   range: DateRange;
 }
 
-async function sumDre(companyId: string, group: string, range: DateRange): Promise<number> {
+async function aggregateDre(companyId: string, range: DateRange): Promise<Map<string, number>> {
   const { data } = await supabase
     .from("dre_base")
-    .select("amount_signed")
+    .select("dre_group, amount_signed")
     .eq("company_id", companyId)
-    .eq("dre_group", group)
     .gte("competence_date", range.start)
     .lte("competence_date", range.end);
-  return (data ?? []).reduce((s, r) => s + Number(r.amount_signed ?? 0), 0);
+  const totals = new Map<string, number>();
+  for (const r of data ?? []) {
+    const k = String(r.dre_group);
+    totals.set(k, (totals.get(k) ?? 0) + Number(r.amount_signed ?? 0));
+  }
+  return totals;
 }
 
 function pctVar(curr: number, prev: number): number {
@@ -52,17 +57,12 @@ export function useKpis(period: string, companyId: string | null | undefined) {
       const todayStr = today.toISOString().slice(0, 10);
 
       const [
-        receita, ebitda, resultado,
-        receitaPrev, ebitdaPrev, resultadoPrev,
+        currTotals, prevTotals,
         payables, receivables,
         accountsRes, snapshotRes,
       ] = await Promise.all([
-        sumDre(companyId!, "Receita Líquida", range),
-        sumDre(companyId!, "EBITDA", range),
-        sumDre(companyId!, "Lucro Líquido", range),
-        sumDre(companyId!, "Receita Líquida", prev),
-        sumDre(companyId!, "EBITDA", prev),
-        sumDre(companyId!, "Lucro Líquido", prev),
+        aggregateDre(companyId!, range),
+        aggregateDre(companyId!, prev),
         supabase
           .from("payable_entries")
           .select("amount, paid_amount")
@@ -88,6 +88,15 @@ export function useKpis(period: string, companyId: string | null | undefined) {
           .limit(1)
           .maybeSingle(),
       ]);
+
+      const curr = computeDreSubtotals(currTotals);
+      const prv = computeDreSubtotals(prevTotals);
+      const receita = curr.receitaLiquida + curr.outrasReceitas;
+      const receitaPrev = prv.receitaLiquida + prv.outrasReceitas;
+      const ebitda = curr.ebitda;
+      const ebitdaPrev = prv.ebitda;
+      const resultado = curr.lucroLiquido;
+      const resultadoPrev = prv.lucroLiquido;
 
       const contasPagar7d = (payables.data ?? []).reduce(
         (s, r) => s + (Number(r.amount ?? 0) - Number(r.paid_amount ?? 0)),
