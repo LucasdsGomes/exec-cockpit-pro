@@ -370,6 +370,13 @@ export type Database = {
             referencedRelation: "v_unclassified_entries"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "bank_movements_financial_entry_id_fkey"
+            columns: ["financial_entry_id"]
+            isOneToOne: false
+            referencedRelation: "v_unclassified_queue"
+            referencedColumns: ["id"]
+          },
         ]
       }
       budget_entries: {
@@ -1035,6 +1042,13 @@ export type Database = {
             referencedRelation: "v_unclassified_entries"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "dfc_forecast_base_source_entry_id_fkey"
+            columns: ["source_entry_id"]
+            isOneToOne: false
+            referencedRelation: "v_unclassified_queue"
+            referencedColumns: ["id"]
+          },
         ]
       }
       dfc_realized_base: {
@@ -1107,6 +1121,13 @@ export type Database = {
             columns: ["source_entry_id"]
             isOneToOne: false
             referencedRelation: "v_unclassified_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dfc_realized_base_source_entry_id_fkey"
+            columns: ["source_entry_id"]
+            isOneToOne: false
+            referencedRelation: "v_unclassified_queue"
             referencedColumns: ["id"]
           },
         ]
@@ -1200,6 +1221,13 @@ export type Database = {
             columns: ["source_entry_id"]
             isOneToOne: false
             referencedRelation: "v_unclassified_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dre_base_source_entry_id_fkey"
+            columns: ["source_entry_id"]
+            isOneToOne: false
+            referencedRelation: "v_unclassified_queue"
             referencedColumns: ["id"]
           },
           {
@@ -2015,6 +2043,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "payable_entries_financial_entry_id_fkey"
+            columns: ["financial_entry_id"]
+            isOneToOne: false
+            referencedRelation: "v_unclassified_queue"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "payable_entries_supplier_id_fkey"
             columns: ["supplier_id"]
             isOneToOne: false
@@ -2158,6 +2193,13 @@ export type Database = {
             referencedRelation: "v_unclassified_entries"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "receivable_entries_financial_entry_id_fkey"
+            columns: ["financial_entry_id"]
+            isOneToOne: false
+            referencedRelation: "v_unclassified_queue"
+            referencedColumns: ["id"]
+          },
         ]
       }
       suppliers: {
@@ -2202,6 +2244,59 @@ export type Database = {
             foreignKeyName: "suppliers_company_id_fkey"
             columns: ["company_id"]
             isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sync_preferences: {
+        Row: {
+          company_id: string
+          created_at: string
+          daily_sync_enabled: boolean
+          daily_sync_hour: number
+          id: string
+          incremental_mode: boolean
+          last_full_sync_at: string | null
+          last_incremental_sync_at: string | null
+          log_retention_days: number
+          lookback_days: number
+          notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          daily_sync_enabled?: boolean
+          daily_sync_hour?: number
+          id?: string
+          incremental_mode?: boolean
+          last_full_sync_at?: string | null
+          last_incremental_sync_at?: string | null
+          log_retention_days?: number
+          lookback_days?: number
+          notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          daily_sync_enabled?: boolean
+          daily_sync_hour?: number
+          id?: string
+          incremental_mode?: boolean
+          last_full_sync_at?: string | null
+          last_incremental_sync_at?: string | null
+          log_retention_days?: number
+          lookback_days?: number
+          notes?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sync_preferences_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: true
             referencedRelation: "companies"
             referencedColumns: ["id"]
           },
@@ -2400,9 +2495,72 @@ export type Database = {
           },
         ]
       }
+      v_unclassified_queue: {
+        Row: {
+          amount_signed: number | null
+          cash_date: string | null
+          category_raw: string | null
+          company_id: string | null
+          competence_date: string | null
+          created_at: string | null
+          customer_name: string | null
+          description: string | null
+          direction: Database["public"]["Enums"]["entry_direction"] | null
+          due_date: string | null
+          id: string | null
+          source_endpoint: string | null
+          source_record_id: string | null
+          supplier_name: string | null
+        }
+        Insert: {
+          amount_signed?: number | null
+          cash_date?: string | null
+          category_raw?: string | null
+          company_id?: string | null
+          competence_date?: string | null
+          created_at?: string | null
+          customer_name?: string | null
+          description?: string | null
+          direction?: Database["public"]["Enums"]["entry_direction"] | null
+          due_date?: string | null
+          id?: string | null
+          source_endpoint?: string | null
+          source_record_id?: string | null
+          supplier_name?: string | null
+        }
+        Update: {
+          amount_signed?: number | null
+          cash_date?: string | null
+          category_raw?: string | null
+          company_id?: string | null
+          competence_date?: string | null
+          created_at?: string | null
+          customer_name?: string | null
+          description?: string | null
+          direction?: Database["public"]["Enums"]["entry_direction"] | null
+          due_date?: string | null
+          id?: string | null
+          source_endpoint?: string | null
+          source_record_id?: string | null
+          supplier_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "financial_entries_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       can_edit_company: { Args: { _company_id: string }; Returns: boolean }
+      classify_financial_entry: {
+        Args: { _entry_id: string }
+        Returns: boolean
+      }
       compute_financial_cycle: {
         Args: { _company: string; _period: string }
         Returns: {
@@ -2428,6 +2586,14 @@ export type Database = {
         Returns: boolean
       }
       is_company_admin: { Args: { _company_id: string }; Returns: boolean }
+      reclassify_company: {
+        Args: { _company: string; _only_unclassified?: boolean }
+        Returns: number
+      }
+      run_full_pipeline: {
+        Args: { _company: string; _date?: string }
+        Returns: Json
+      }
       snapshot_kpis: {
         Args: { _company: string; _date: string }
         Returns: string
