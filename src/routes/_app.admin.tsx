@@ -4,95 +4,164 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { CheckCircle2, RefreshCw, Plug, AlertTriangle, FileWarning } from "lucide-react";
+import { CheckCircle2, RefreshCw, Plug, AlertTriangle, FileWarning, Loader2 } from "lucide-react";
+import { useState, useMemo } from "react";
+import { toast } from "sonner";
+import { BRL } from "@/lib/format";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useCompany } from "@/lib/queries/company";
+import {
+  useSyncBatches,
+  useSyncLogs,
+  useCategoryMappings,
+  useInitialBalances,
+  useUnclassifiedEntries,
+  useTriggerSync,
+  useReclassify,
+} from "@/lib/queries/admin";
 
 export const Route = createFileRoute("/_app/admin")({
   head: () => ({
     meta: [
-      { title: "Admin — Hitech Electric" },
+      { title: "Admin" },
       { name: "description", content: "Status de integrações, DE-PARA, orçamento, ajustes manuais e fila de classificação." },
     ],
   }),
   component: AdminPage,
 });
 
-const integracoes = [
-  { nome: "OMIE • Lançamentos", status: "ok", ultima: "Hoje 09:42", erros: 0 },
-  { nome: "OMIE • Contas a pagar", status: "ok", ultima: "Hoje 09:42", erros: 0 },
-  { nome: "OMIE • Contas a receber", status: "ok", ultima: "Hoje 09:41", erros: 0 },
-  { nome: "OMIE • Plano de contas", status: "warn", ultima: "Ontem 18:10", erros: 2 },
-];
-
-const fila = [
-  { data: "23/04", historico: "PIX recebido — ref. 12842", valor: 18_400 },
-  { data: "23/04", historico: "Boleto pago — Distribuidora Volt", valor: -42_100 },
-  { data: "22/04", historico: "TED — pagamento serviço", valor: -7_900 },
-];
-
-const depara = [
-  { omie: "Receita Bruta Mercadorias", gerencial: "Vendas Produto" },
-  { omie: "Receita Serviços Engenharia", gerencial: "Vendas Serviço" },
-  { omie: "Compra de Mercadorias", gerencial: "CMV" },
-  { omie: "Folha de Pagamento", gerencial: "Pessoal" },
-];
+function fmtDateTime(s: string | null) {
+  if (!s) return "—";
+  const d = new Date(s);
+  return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
 
 function AdminPage() {
+  const { data: company } = useCompany();
+  const cid = company?.id;
+
+  const batches = useSyncBatches(cid);
+  const logs = useSyncLogs(cid);
+  const mappings = useCategoryMappings(cid);
+  const initialBalances = useInitialBalances(cid);
+  const unclassified = useUnclassifiedEntries(cid);
+  const triggerSync = useTriggerSync(cid);
+  const reclassify = useReclassify(cid);
+
+  const [filterUnmapped, setFilterUnmapped] = useState(false);
+
+  const handleSync = () => {
+    toast.promise(triggerSync.mutateAsync(), {
+      loading: "Disparando sincronização OMIE...",
+      success: "Sincronização iniciada com sucesso",
+      error: (e) => `Erro: ${e.message}`,
+    });
+  };
+
+  const handleReclassify = () => {
+    toast.promise(reclassify.mutateAsync(), {
+      loading: "Reprocessando classificações e KPIs...",
+      success: "Pipeline executado",
+      error: (e) => `Erro: ${e.message}`,
+    });
+  };
+
+  const filteredMappings = useMemo(() => {
+    const list = mappings.data ?? [];
+    return filterUnmapped ? list.filter((m) => !m.dre_category && !m.dfc_category) : list;
+  }, [mappings.data, filterUnmapped]);
+
+  const lastByEndpoint = useMemo(() => {
+    const map = new Map<string, NonNullable<typeof batches.data>[number]>();
+    for (const b of batches.data ?? []) {
+      if (!map.has(b.source_endpoint)) map.set(b.source_endpoint, b);
+    }
+    return [...map.entries()];
+  }, [batches.data]);
+
   return (
     <div className="space-y-5">
       <header className="flex items-end justify-between gap-4 flex-wrap">
         <div>
           <div className="text-[11px] uppercase tracking-[0.2em] text-primary font-medium">Configurações</div>
           <h1 className="text-2xl font-semibold tracking-tight mt-1">Administração</h1>
-          <p className="text-sm text-muted-foreground mt-1">Integrações OMIE, DE-PARA gerencial, orçamento e ajustes</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {company?.name ?? "—"} · Integrações OMIE, DE-PARA gerencial e ajustes
+          </p>
         </div>
-        <Button className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
-          <RefreshCw className="size-4" /> Atualizar agora
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleReclassify} disabled={reclassify.isPending} className="gap-2">
+            {reclassify.isPending ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+            Reprocessar
+          </Button>
+          <Button onClick={handleSync} disabled={triggerSync.isPending} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
+            {triggerSync.isPending ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+            Sincronizar OMIE
+          </Button>
+        </div>
       </header>
 
       <Tabs defaultValue="integracoes">
         <TabsList className="bg-card border border-border">
           <TabsTrigger value="integracoes">Integrações</TabsTrigger>
-          <TabsTrigger value="depara">DE-PARA</TabsTrigger>
-          <TabsTrigger value="orcamento">Orçamento</TabsTrigger>
+          <TabsTrigger value="depara">DE-PARA ({mappings.data?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="saldos">Saldos iniciais</TabsTrigger>
-          <TabsTrigger value="ajustes">Ajustes manuais</TabsTrigger>
-          <TabsTrigger value="fila">Fila de classificação</TabsTrigger>
+          <TabsTrigger value="fila">Fila ({unclassified.data?.length ?? 0})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="integracoes" className="mt-4 space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card className="bg-card border-border">
               <CardHeader className="flex-row items-center justify-between">
-                <CardTitle className="text-base flex items-center gap-2"><Plug className="size-4 text-primary" /> OMIE — Credenciais</CardTitle>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Plug className="size-4 text-primary" /> OMIE — Conexão
+                </CardTitle>
                 <Badge variant="outline" className="border-success/40 text-success bg-success/10">Conectado</Badge>
               </CardHeader>
               <CardContent className="space-y-3">
-                <Field label="App Key" value="••••••••••8421" />
-                <Field label="App Secret" value="••••••••••••••••" />
+                <Field label="Empresa" value={company?.name ?? "—"} />
+                <Field label="Slug" value={company?.slug ?? "—"} />
                 <Field label="Base URL" value="https://app.omie.com.br/api/v1/" />
-                <Button variant="outline" size="sm">Testar conexão</Button>
+                <p className="text-xs text-muted-foreground">
+                  Credenciais armazenadas como secrets. Use "Sincronizar OMIE" para iniciar um novo batch.
+                </p>
               </CardContent>
             </Card>
 
             <Card className="bg-card border-border">
               <CardHeader><CardTitle className="text-base">Status dos endpoints</CardTitle></CardHeader>
               <CardContent>
-                <div className="divide-y divide-border">
-                  {integracoes.map((i) => (
-                    <div key={i.nome} className="flex items-center justify-between py-2.5">
-                      <div className="flex items-center gap-2 text-sm">
-                        {i.status === "ok"
-                          ? <CheckCircle2 className="size-4 text-success" />
-                          : <AlertTriangle className="size-4 text-warning" />}
-                        <span>{i.nome}</span>
+                {batches.isLoading ? (
+                  <Skeleton className="h-32" />
+                ) : lastByEndpoint.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Nenhum batch executado ainda.</p>
+                ) : (
+                  <div className="divide-y divide-border">
+                    {lastByEndpoint.map(([endpoint, b]) => (
+                      <div key={endpoint} className="flex items-center justify-between py-2.5">
+                        <div className="flex items-center gap-2 text-sm">
+                          {b.status === "success" || b.status === "completed" ? (
+                            <CheckCircle2 className="size-4 text-success" />
+                          ) : b.status === "running" || b.status === "pending" ? (
+                            <Loader2 className="size-4 text-primary animate-spin" />
+                          ) : (
+                            <AlertTriangle className="size-4 text-warning" />
+                          )}
+                          <span className="font-mono text-xs">{endpoint}</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground tabular-nums">
+                          {fmtDateTime(b.finished_at ?? b.started_at)}
+                          {(b.error_records ?? 0) > 0 && (
+                            <span className="text-warning ml-2">{b.error_records} erros</span>
+                          )}
+                          {b.processed_records != null && (
+                            <span className="ml-2">· {b.processed_records}/{b.total_records ?? "?"}</span>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        {i.ultima} {i.erros > 0 && <span className="text-warning ml-2">{i.erros} erros</span>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -100,13 +169,17 @@ function AdminPage() {
           <Card className="bg-card border-border">
             <CardHeader><CardTitle className="text-base">Logs recentes</CardTitle></CardHeader>
             <CardContent>
-              <pre className="text-xs font-mono bg-background border border-border rounded-md p-3 overflow-auto max-h-56 text-muted-foreground">
-{`[2026-04-23 09:42:01] INFO  OMIE.lancamentos sync OK (1.842 registros)
-[2026-04-23 09:42:00] INFO  OMIE.contas_pagar sync OK (412 registros)
-[2026-04-23 09:41:58] INFO  OMIE.contas_receber sync OK (528 registros)
-[2026-04-22 18:10:04] WARN  OMIE.plano_contas — 2 contas sem mapeamento DE-PARA
-[2026-04-22 09:40:11] INFO  Reprocessamento manual concluído por CFO Hitech`}
-              </pre>
+              {logs.isLoading ? (
+                <Skeleton className="h-56" />
+              ) : (logs.data ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">Sem logs.</p>
+              ) : (
+                <pre className="text-xs font-mono bg-background border border-border rounded-md p-3 overflow-auto max-h-72 text-muted-foreground leading-relaxed">
+                  {(logs.data ?? [])
+                    .map((l) => `[${fmtDateTime(l.created_at)}] ${l.level.toUpperCase().padEnd(5)} ${l.source_endpoint ?? "-"} — ${l.message}`)
+                    .join("\n")}
+                </pre>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -114,62 +187,97 @@ function AdminPage() {
         <TabsContent value="depara" className="mt-4">
           <Card className="bg-card border-border">
             <CardHeader className="flex-row items-center justify-between">
-              <CardTitle className="text-base">DE-PARA contábil → gerencial</CardTitle>
-              <Button size="sm" variant="outline">Adicionar mapeamento</Button>
+              <CardTitle className="text-base">DE-PARA: OMIE → gerencial</CardTitle>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant={filterUnmapped ? "default" : "outline"}
+                  onClick={() => setFilterUnmapped((v) => !v)}
+                >
+                  Sem mapeamento
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
-                    <th className="py-2.5">Conta OMIE</th>
-                    <th className="py-2.5">Categoria gerencial</th>
-                    <th className="py-2.5 text-right">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {depara.map((d, i) => (
-                    <tr key={i} className="border-b border-border/60">
-                      <td className="py-2.5">{d.omie}</td>
-                      <td className="py-2.5"><Badge variant="outline" className="border-primary/30 text-primary bg-primary/10">{d.gerencial}</Badge></td>
-                      <td className="py-2.5 text-right"><Button variant="ghost" size="sm">Editar</Button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="orcamento" className="mt-4">
-          <Card className="bg-card border-border">
-            <CardHeader><CardTitle className="text-base">Orçamento anual por categoria</CardTitle></CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                Importação via planilha ou edição inline. Comparativos automáticos disponíveis em DRE e Home.
-              </p>
-              <Button size="sm" variant="outline" className="mt-3">Importar planilha</Button>
+              {mappings.isLoading ? (
+                <Skeleton className="h-64" />
+              ) : (
+                <div className="overflow-auto max-h-[600px]">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-card">
+                      <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
+                        <th className="py-2.5">Código</th>
+                        <th className="py-2.5">Descrição OMIE</th>
+                        <th className="py-2.5">DRE</th>
+                        <th className="py-2.5">DFC</th>
+                        <th className="py-2.5">Tipo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredMappings.map((d) => (
+                        <tr key={d.id} className="border-b border-border/60">
+                          <td className="py-2 font-mono text-xs">{d.omie_category_code}</td>
+                          <td className="py-2">{d.omie_category_description ?? "—"}</td>
+                          <td className="py-2">
+                            {d.dre_category ? (
+                              <Badge variant="outline" className="border-primary/30 text-primary bg-primary/10">{d.dre_category}</Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </td>
+                          <td className="py-2">
+                            {d.dfc_category ? (
+                              <Badge variant="outline" className="border-success/30 text-success bg-success/10">{d.dfc_category}</Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </td>
+                          <td className="py-2 text-xs text-muted-foreground">{d.flow_type ?? "—"}</td>
+                        </tr>
+                      ))}
+                      {filteredMappings.length === 0 && (
+                        <tr><td colSpan={5} className="py-6 text-center text-sm text-muted-foreground">Nenhuma categoria neste filtro.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="saldos" className="mt-4">
           <Card className="bg-card border-border">
-            <CardHeader><CardTitle className="text-base">Saldos iniciais por conta</CardTitle></CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Field label="Itaú CC 12345-6" value="R$ 1.245.000" />
-              <Field label="Bradesco CC 98765-4" value="R$ 980.000" />
-              <Field label="Santander CC 55555-1" value="R$ 578.000" />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="ajustes" className="mt-4">
-          <Card className="bg-card border-border">
-            <CardHeader><CardTitle className="text-base">Ajustes manuais</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">Saldos iniciais cadastrados</CardTitle></CardHeader>
             <CardContent>
-              <p className="text-sm text-muted-foreground">
-                Lançamentos extra-contábeis (estoques, provisões, ajustes de PME) ficam isolados aqui e não sobrescrevem os dados do OMIE.
-              </p>
+              {initialBalances.isLoading ? (
+                <Skeleton className="h-32" />
+              ) : (initialBalances.data ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Nenhum saldo inicial cadastrado. Sem este dado a Projeção do Balanço fica incompleta.
+                </p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
+                      <th className="py-2.5">Conta</th>
+                      <th className="py-2.5">Tipo</th>
+                      <th className="py-2.5">Data referência</th>
+                      <th className="py-2.5 text-right">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(initialBalances.data ?? []).map((b) => (
+                      <tr key={b.id} className="border-b border-border/60">
+                        <td className="py-2">{b.account_label ?? "—"}</td>
+                        <td className="py-2 text-xs text-muted-foreground">{b.balance_type}</td>
+                        <td className="py-2 text-xs">{b.reference_date}</td>
+                        <td className="py-2 text-right tabular-nums font-medium">{BRL(Number(b.amount))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -177,34 +285,44 @@ function AdminPage() {
         <TabsContent value="fila" className="mt-4">
           <Card className="bg-card border-border">
             <CardHeader className="flex-row items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2"><FileWarning className="size-4 text-warning" /> Pendentes de classificação</CardTitle>
-              <Button size="sm" variant="outline">Reprocessar</Button>
+              <CardTitle className="text-base flex items-center gap-2">
+                <FileWarning className="size-4 text-warning" /> Pendentes de classificação
+              </CardTitle>
+              <Button size="sm" variant="outline" onClick={handleReclassify} disabled={reclassify.isPending}>
+                Reprocessar todos
+              </Button>
             </CardHeader>
             <CardContent>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
-                    <th className="py-2.5">Data</th>
-                    <th className="py-2.5">Histórico</th>
-                    <th className="py-2.5 text-right">Valor</th>
-                    <th className="py-2.5 text-right">Categoria</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {fila.map((f, i) => (
-                    <tr key={i} className="border-b border-border/60">
-                      <td className="py-2.5">{f.data}</td>
-                      <td className="py-2.5">{f.historico}</td>
-                      <td className={`py-2.5 text-right tabular-nums ${f.valor < 0 ? "text-destructive" : "text-success"}`}>
-                        {f.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                      </td>
-                      <td className="py-2.5 text-right">
-                        <Button size="sm" variant="outline">Classificar</Button>
-                      </td>
+              {unclassified.isLoading ? (
+                <Skeleton className="h-32" />
+              ) : (unclassified.data ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">Sem lançamentos pendentes 🎉</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
+                      <th className="py-2.5">Data</th>
+                      <th className="py-2.5">Histórico</th>
+                      <th className="py-2.5">Categoria OMIE</th>
+                      <th className="py-2.5 text-right">Valor</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {(unclassified.data ?? []).map((f) => (
+                      <tr key={f.id} className="border-b border-border/60">
+                        <td className="py-2 text-xs">{f.competence_date}</td>
+                        <td className="py-2 max-w-md truncate">
+                          {f.description ?? f.supplier_name ?? f.customer_name ?? "—"}
+                        </td>
+                        <td className="py-2 text-xs font-mono text-muted-foreground">{f.category_raw ?? "—"}</td>
+                        <td className={`py-2 text-right tabular-nums ${f.amount_signed < 0 ? "text-destructive" : "text-success"}`}>
+                          {BRL(f.amount_signed)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
