@@ -498,6 +498,11 @@ function PaymentList({
       </CardHeader>
       <CardContent>
         <div className="divide-y divide-border">
+          {rows.length === 0 && (
+            <div className="py-6 text-center text-xs text-muted-foreground">
+              Nenhum lançamento nos próximos 14 dias.
+            </div>
+          )}
           {rows.map((r, i) => (
             <div
               key={i}
