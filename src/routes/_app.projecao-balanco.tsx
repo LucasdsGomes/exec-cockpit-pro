@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { useCompany } from "@/lib/queries/company";
 import { useBalance } from "@/lib/queries/balance";
+import { useFilters } from "@/lib/filters-context";
 
 export const Route = createFileRoute("/_app/projecao-balanco")({
   head: () => ({
@@ -22,7 +23,8 @@ export const Route = createFileRoute("/_app/projecao-balanco")({
 
 function BalancoPage() {
   const { data: company } = useCompany();
-  const { data: balanco, isLoading } = useBalance(company?.id);
+  const filters = useFilters();
+  const { data: balanco, isLoading } = useBalance(company?.id, filters);
 
   if (isLoading || !balanco) {
     return (

@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useCompany } from "@/lib/queries/company";
 import { useCashDaily } from "@/lib/queries/series";
 import { useDfcSummary, useDueHeatmap } from "@/lib/queries/dfc";
+import { useFilters } from "@/lib/filters-context";
 import { downloadCsv } from "@/lib/export-csv";
 import { toast } from "sonner";
 
@@ -34,8 +35,9 @@ function FluxoCaixa() {
   const [period, setPeriod] = useState("30d");
   const { data: company } = useCompany();
   const companyId = company?.id;
-  const { data: dfc, isLoading: loadingDfc } = useDfcSummary(companyId, period);
-  const { data: caixaDiario = [], isLoading: loadingDaily } = useCashDaily(companyId, period);
+  const filters = useFilters();
+  const { data: dfc, isLoading: loadingDfc } = useDfcSummary(companyId, period, filters);
+  const { data: caixaDiario = [], isLoading: loadingDaily } = useCashDaily(companyId, period, filters);
   const { data: heatmap = [] } = useDueHeatmap(companyId, 28);
 
   const totalEntradas = dfc?.totalEntradas ?? 0;

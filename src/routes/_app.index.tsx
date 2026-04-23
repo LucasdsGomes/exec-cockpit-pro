@@ -43,6 +43,7 @@ import {
 import { BRL } from "@/lib/format";
 import { useCompany } from "@/lib/queries/company";
 import { useKpis } from "@/lib/queries/kpis";
+import { useFilters } from "@/lib/filters-context";
 import {
   useTrend12m,
   useCashDaily,
@@ -73,9 +74,10 @@ function HomePage() {
   const [period, setPeriod] = useState("30d");
   const { data: company, isLoading: loadingCo } = useCompany();
   const companyId = company?.id;
-  const { data: kpis, isLoading: loadingKpis } = useKpis(period, companyId);
+  const filters = useFilters();
+  const { data: kpis, isLoading: loadingKpis } = useKpis(period, companyId, filters);
   const { data: tendencia12m = [] } = useTrend12m(companyId);
-  const { data: caixaDiario = [] } = useCashDaily(companyId, period);
+  const { data: caixaDiario = [] } = useCashDaily(companyId, period, filters);
   const { data: proximosPagar = [] } = useUpcomingPayables(companyId, 14);
   const { data: proximosReceber = [] } = useUpcomingReceivables(companyId, 14);
   const { data: alertas = [] } = useAlerts(companyId);
