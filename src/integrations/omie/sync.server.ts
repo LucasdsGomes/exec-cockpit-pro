@@ -247,7 +247,9 @@ async function runListEndpoint(opts: {
 
 // --- Upserters ---
 
-async function upsertFinancialEntry(record: ReturnType<typeof mapContaPagar>): Promise<{ inserted: number; updated: number; errors: number }> {
+type FinancialEntryInsert = ReturnType<typeof mapContaPagar> | ReturnType<typeof mapContaReceber>;
+
+async function upsertFinancialEntry(record: FinancialEntryInsert): Promise<{ inserted: number; updated: number; errors: number }> {
   if (!record.source_record_id) return { inserted: 0, updated: 0, errors: 0 };
   const { data: existing } = await supabaseAdmin
     .from("financial_entries")
@@ -266,7 +268,7 @@ async function upsertFinancialEntry(record: ReturnType<typeof mapContaPagar>): P
   }
   const { error } = await supabaseAdmin
     .from("financial_entries")
-    .insert({ ...record, synced_at: new Date().toISOString() });
+    .insert([{ ...record, synced_at: new Date().toISOString() }]);
   return { inserted: error ? 0 : 1, updated: 0, errors: error ? 1 : 0 };
 }
 
