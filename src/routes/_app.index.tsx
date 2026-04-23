@@ -46,7 +46,6 @@ import { useKpis } from "@/lib/queries/kpis";
 import { useFilters } from "@/lib/filters-context";
 import { useInitialBalances } from "@/lib/queries/admin";
 import { Link } from "@tanstack/react-router";
-import { Card as AlertCard, CardContent as AlertCardContent } from "@/components/ui/card";
 import {
   useTrend12m,
   useCashDaily,
@@ -143,16 +142,16 @@ function HomePage() {
   return (
     <div className="space-y-6">
       {noBalances && companyId && (
-        <AlertCard className="border-warning/40 bg-warning/5">
-          <AlertCardContent className="py-3 flex items-center justify-between gap-4">
+        <Card className="border-warning/40 bg-warning/5">
+          <CardContent className="py-3 flex items-center justify-between gap-4">
             <div className="text-sm">
               <strong>Saldo de caixa zerado.</strong> Cadastre o saldo de abertura de cada conta bancária para o KPI refletir o caixa real.
             </div>
             <Link to="/admin">
               <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90">Cadastrar saldos</Button>
             </Link>
-          </AlertCardContent>
-        </AlertCard>
+          </CardContent>
+        </Card>
       )}
       {/* Heading */}
       <SectionHeader
