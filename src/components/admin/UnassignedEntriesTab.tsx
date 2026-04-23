@@ -44,7 +44,9 @@ export function UnassignedEntriesTab({ companyId }: { companyId: string | null |
   const allChecked = rows.length > 0 && rows.every((r) => selected.has(r.id));
   const toggleAll = (v: boolean) => {
     const s = new Set(selected);
-    for (const r of rows) (v ? s.add : s.delete).call(s, r.id);
+    for (const r of rows) {
+      if (v) s.add(r.id); else s.delete(r.id);
+    }
     setSelected(s);
   };
   const toggleOne = (id: string) => {
