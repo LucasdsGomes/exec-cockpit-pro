@@ -1,19 +1,24 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState, Fragment } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { caixaDiario, dfc, heatmap } from "@/lib/mock-data";
 import { BRL } from "@/lib/format";
 import {
   ResponsiveContainer, ComposedChart, CartesianGrid, XAxis, YAxis, Tooltip, Bar, Line, Area, AreaChart, ReferenceLine,
 } from "recharts";
-import { Download, AlertTriangle, ArrowDownRight, ArrowUpRight, Wallet } from "lucide-react";
+import { Download, AlertTriangle, ArrowDownRight, ArrowUpRight, Wallet, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SectionHeader } from "@/components/ui/section-header";
 import { PeriodPresets } from "@/components/ui/period-presets";
 import { CHART_COLORS, CHART_GRID, CHART_AXIS_TICK, ChartTooltip } from "@/components/ui/chart-primitives";
 import { InsightCard } from "@/components/ui/insight-card";
-import { Fragment } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useCompany } from "@/lib/queries/company";
+import { useCashDaily } from "@/lib/queries/series";
+import { useDfcSummary, useDueHeatmap } from "@/lib/queries/dfc";
+import { downloadCsv } from "@/lib/export-csv";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/fluxo-de-caixa")({
   head: () => ({
@@ -26,36 +31,64 @@ export const Route = createFileRoute("/_app/fluxo-de-caixa")({
 });
 
 function FluxoCaixa() {
-  const totalEntradas = dfc.blocos.flatMap(b => b.itens).filter(i => i.valor > 0).reduce((a, b) => a + b.valor, 0);
-  const totalSaidas = dfc.blocos.flatMap(b => b.itens).filter(i => i.valor < 0).reduce((a, b) => a + b.valor, 0);
+  const [period, setPeriod] = useState("30d");
+  const { data: company } = useCompany();
+  const companyId = company?.id;
+  const { data: dfc, isLoading: loadingDfc } = useDfcSummary(companyId, period);
+  const { data: caixaDiario = [], isLoading: loadingDaily } = useCashDaily(companyId, period);
+  const { data: heatmap = [] } = useDueHeatmap(companyId, 28);
+
+  const totalEntradas = dfc?.totalEntradas ?? 0;
+  const totalSaidas = dfc?.totalSaidas ?? 0;
   const liquido = totalEntradas + totalSaidas;
+
+  const exportCsv = () => {
+    if (!caixaDiario.length) return;
+    downloadCsv(caixaDiario.map((d) => ({ ...d })) as unknown as Record<string, unknown>[], `fluxo_caixa_${period}`, [
+      { key: "dia", label: "Dia" },
+      { key: "entrada", label: "Entrada" },
+      { key: "saida", label: "Saída" },
+      { key: "saldo", label: "Saldo" },
+    ]);
+    toast.success("CSV exportado");
+  };
 
   return (
     <div className="space-y-6 anim-fade-in">
       <SectionHeader
         eyebrow="Tesouraria"
         title="Fluxo de Caixa"
-        description="DFC realizada e prevista · 3 contas bancárias · visão diária consolidada."
+        description={dfc ? `Visão diária consolidada · ${dfc.isForecast ? "previsão (extratos não sincronizados)" : "realizado"}` : "Carregando…"}
         actions={
           <>
-            <PeriodPresets />
-            <Button variant="outline" size="sm" className="gap-1.5">
+            <PeriodPresets value={period} onChange={setPeriod} />
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={exportCsv}>
               <Download className="size-3.5" /> Exportar
             </Button>
           </>
         }
       />
 
+      {dfc?.isForecast && (
+        <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs">
+          <Info className="size-4 text-warning shrink-0 mt-0.5" />
+          <div>
+            <div className="font-medium text-warning">Sincronização de extratos bancários ainda não disponível</div>
+            <div className="text-muted-foreground mt-0.5">Mostrando previsão baseada em contas a pagar/receber.</div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <SaldoCard label="Saldo inicial" value={BRL(dfc.saldoInicial)} icon={Wallet} />
+        <SaldoCard label="Saldo inicial" value={BRL(dfc?.saldoInicial ?? 0)} icon={Wallet} />
         <SaldoCard label="Entradas (mês)" value={BRL(totalEntradas)} positive trend={ArrowUpRight} />
         <SaldoCard label="Saídas (mês)" value={BRL(totalSaidas)} negative trend={ArrowDownRight} />
-        <SaldoCard label="Saldo final" value={BRL(dfc.saldoFinal)} highlight delta={(liquido / dfc.saldoInicial) * 100} />
+        <SaldoCard label="Saldo final" value={BRL(dfc?.saldoFinal ?? 0)} highlight delta={dfc?.saldoInicial ? (liquido / dfc.saldoInicial) * 100 : undefined} />
       </div>
 
       <Tabs defaultValue="realizada">
         <TabsList className="bg-card border border-border h-9">
-          <TabsTrigger value="realizada">DFC Realizada</TabsTrigger>
+          <TabsTrigger value="realizada">DFC {dfc?.isForecast ? "Prevista" : "Realizada"}</TabsTrigger>
           <TabsTrigger value="prevista">DFC Prevista</TabsTrigger>
         </TabsList>
 
@@ -65,13 +98,16 @@ function FluxoCaixa() {
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <CardTitle className="text-base">Saldo diário · 30 dias</CardTitle>
+                    <CardTitle className="text-base">Saldo diário</CardTitle>
                     <p className="text-xs text-muted-foreground mt-0.5">Entradas, saídas e curva de saldo</p>
                   </div>
                   <Legend />
                 </div>
               </CardHeader>
               <CardContent className="h-72 pt-2">
+                {loadingDaily ? <Skeleton className="h-full" /> : caixaDiario.length === 0 ? (
+                  <div className="h-full grid place-items-center text-sm text-muted-foreground">Sem movimentações no período.</div>
+                ) : (
                 <ResponsiveContainer>
                   <ComposedChart data={caixaDiario}>
                     <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} vertical={false} />
@@ -83,6 +119,7 @@ function FluxoCaixa() {
                     <Line name="Saldo" dataKey="saldo" stroke={CHART_COLORS.accent} strokeWidth={2} dot={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
 
@@ -92,21 +129,30 @@ function FluxoCaixa() {
                   <CardTitle className="text-base">Vencimentos</CardTitle>
                   <p className="text-xs text-muted-foreground mt-0.5">Próximos 28 dias</p>
                 </div>
-                <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-warning/10 text-warning border border-warning/30">
-                  <AlertTriangle className="size-3" /> 3 picos
-                </span>
+                {(() => {
+                  const max = Math.max(...heatmap.map((h) => h.valor), 0);
+                  const peaks = heatmap.filter((h) => h.valor > max * 0.7 && max > 0).length;
+                  if (peaks === 0) return null;
+                  return (
+                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium bg-warning/10 text-warning border border-warning/30">
+                      <AlertTriangle className="size-3" /> {peaks} picos
+                    </span>
+                  );
+                })()}
               </CardHeader>
               <CardContent>
-                <Heatmap />
+                <Heatmap cells={heatmap} />
               </CardContent>
             </Card>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <InsightCard level="warn" title="Pico de pagamento em 30/04" description="Folha + DAS concentrados no mesmo dia (R$ 1,07M)." action={{ label: "Ver calendário" }} />
-            <InsightCard level="info" title="Recebíveis concentrados" description="3 clientes respondem por 67% das entradas previstas." />
-            <InsightCard level="ok" title="Geração de caixa positiva" description={`Saldo cresceu ${BRL(liquido)} no mês.`} />
-          </div>
+          {dfc && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <InsightCard level={liquido >= 0 ? "ok" : "warn"} title={liquido >= 0 ? "Geração de caixa positiva" : "Geração de caixa negativa"} description={`Variação de ${BRL(liquido)} no período.`} />
+              <InsightCard level="info" title="Saldo final projetado" description={`${BRL(dfc.saldoFinal)} considerando saldo inicial + movimentações.`} />
+              <InsightCard level={dfc.isForecast ? "warn" : "ok"} title={dfc.isForecast ? "Dados de previsão" : "Dados realizados"} description={dfc.isForecast ? "Conecte extratos bancários para realizar." : "Conciliação OK."} />
+            </div>
+          )}
 
           <Card className="bg-card border-border surface-card">
             <CardHeader className="pb-2">
@@ -114,6 +160,9 @@ function FluxoCaixa() {
               <p className="text-xs text-muted-foreground">Operacional, investimento e financiamento</p>
             </CardHeader>
             <CardContent>
+              {loadingDfc ? <Skeleton className="h-40" /> : !dfc || dfc.blocos.length === 0 ? (
+                <div className="py-10 text-center text-sm text-muted-foreground">Sem movimentações no período.</div>
+              ) : (
               <table className="w-full text-sm">
                 <tbody>
                   <tr>
@@ -152,6 +201,7 @@ function FluxoCaixa() {
                   </tr>
                 </tbody>
               </table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -163,6 +213,9 @@ function FluxoCaixa() {
               <p className="text-xs text-muted-foreground">Baseada em previstos + recorrências</p>
             </CardHeader>
             <CardContent className="h-80 pt-2">
+              {caixaDiario.length === 0 ? (
+                <div className="h-full grid place-items-center text-sm text-muted-foreground">Sem dados para projetar.</div>
+              ) : (
               <ResponsiveContainer>
                 <AreaChart data={caixaDiario.map(d => ({ ...d, saldo: d.saldo * 1.04 }))}>
                   <defs>
@@ -179,6 +232,7 @@ function FluxoCaixa() {
                   <Area name="Saldo previsto" dataKey="saldo" stroke={CHART_COLORS.accent} strokeWidth={2.5} fill="url(#saldo-prev)" />
                 </AreaChart>
               </ResponsiveContainer>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -242,17 +296,20 @@ function SaldoCard({
   );
 }
 
-function Heatmap() {
-  const max = Math.max(...heatmap.map(h => h.valor));
+function Heatmap({ cells }: { cells: { dia: number; date: string; valor: number }[] }) {
+  if (!cells.length) {
+    return <div className="py-6 text-center text-xs text-muted-foreground">Sem vencimentos.</div>;
+  }
+  const max = Math.max(...cells.map((h) => h.valor), 1);
   return (
     <div>
       <div className="grid grid-cols-7 gap-1.5">
-        {heatmap.map((d) => {
+        {cells.map((d) => {
           const intensity = d.valor / max;
           return (
             <div
               key={d.dia}
-              title={`Dia ${d.dia}: ${BRL(d.valor)}`}
+              title={`${d.date}: ${BRL(d.valor)}`}
               className="aspect-square rounded-md grid place-items-center text-[10px] font-medium tabular-nums cursor-pointer transition-transform hover:scale-105 hover:ring-1 hover:ring-primary"
               style={{
                 background: `oklch(0.93 0.18 102 / ${0.06 + intensity * 0.55})`,
