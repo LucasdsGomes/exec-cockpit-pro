@@ -434,8 +434,12 @@ export function useReconcileBankMovements(companyId: string | null | undefined) 
 export function useSyncBankStatements(companyId: string | null | undefined) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (lookbackDays: number = 90) => {
+    mutationFn: async (
+      arg: number | { lookbackDays?: number; bankAccountId?: string | null } = 90,
+    ) => {
       if (!companyId) throw new Error("Empresa não selecionada");
+      const lookbackDays = typeof arg === "number" ? arg : (arg.lookbackDays ?? 90);
+      const bankAccountId = typeof arg === "number" ? null : (arg.bankAccountId ?? null);
       const res = await fetch("/api/public/hooks/omie-sync-now", {
         method: "POST",
         headers: {
@@ -447,6 +451,7 @@ export function useSyncBankStatements(companyId: string | null | undefined) {
           lookbackDays,
           mode: "incremental",
           endpoints: ["movimentacoes_bancarias"],
+          bankAccountId,
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -456,6 +461,7 @@ export function useSyncBankStatements(companyId: string | null | undefined) {
       qc.invalidateQueries({ queryKey: ["syncBatches", companyId] });
       qc.invalidateQueries({ queryKey: ["syncLogs", companyId] });
       qc.invalidateQueries({ queryKey: ["systemHealth", companyId] });
+      qc.invalidateQueries({ queryKey: ["bankAccountsStatus", companyId] });
     },
   });
 }
