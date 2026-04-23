@@ -2,8 +2,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Activity, CheckCircle2, AlertTriangle, Clock, Database, Loader2, Wrench, Link2 } from "lucide-react";
+import { Activity, CheckCircle2, AlertTriangle, Clock, Database, Loader2, Wrench, Link2, FileText, GitMerge } from "lucide-react";
 import { useSystemHealth, useCronJobs, useBackfillBalance, useMirrorApAr, useBackfillRefs } from "@/lib/queries/health";
+import { useSyncBankStatements, useReconcileBankMovements } from "@/lib/queries/admin";
 import { toast } from "sonner";
 
 function fmt(d: string | null) {
@@ -31,6 +32,8 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
   const backfill = useBackfillBalance(companyId);
   const mirror = useMirrorApAr(companyId);
   const refs = useBackfillRefs(companyId);
+  const syncStatements = useSyncBankStatements(companyId);
+  const reconcile = useReconcileBankMovements(companyId);
 
   const handleBackfill = () => {
     toast.promise(backfill.mutateAsync(30), {
@@ -53,6 +56,22 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
       loading: "Reprocessando vínculos (banco, fornecedor, cliente)...",
       success: (r) =>
         `Vínculos atualizados em ${r.reprocess.entries_updated} lançamentos · DRE ${r.propagate.dre_base ?? 0}, DFC ${r.propagate.dfc_forecast_base ?? 0}`,
+      error: (e) => `Erro: ${e.message}`,
+    });
+  };
+
+  const handleSyncStatements = () => {
+    toast.promise(syncStatements.mutateAsync(90), {
+      loading: "Sincronizando extratos bancários (últimos 90 dias)…",
+      success: "Extratos sincronizados",
+      error: (e) => `Erro: ${e.message}`,
+    });
+  };
+
+  const handleReconcile = () => {
+    toast.promise(reconcile.mutateAsync(), {
+      loading: "Conciliando movimentos com títulos…",
+      success: (r) => `${r.matched} movimento(s) conciliado(s)`,
       error: (e) => `Erro: ${e.message}`,
     });
   };
@@ -98,6 +117,14 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
             <Button onClick={handleBackfillRefs} disabled={refs.isPending} variant="outline" className="w-full justify-start gap-2">
               {refs.isPending ? <Loader2 className="size-4 animate-spin" /> : <Link2 className="size-4" />}
               Reprocessar vínculos OMIE (banco / cliente / fornecedor)
+            </Button>
+            <Button onClick={handleSyncStatements} disabled={syncStatements.isPending} variant="outline" className="w-full justify-start gap-2">
+              {syncStatements.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileText className="size-4" />}
+              Sincronizar extratos bancários (OMIE)
+            </Button>
+            <Button onClick={handleReconcile} disabled={reconcile.isPending} variant="outline" className="w-full justify-start gap-2">
+              {reconcile.isPending ? <Loader2 className="size-4 animate-spin" /> : <GitMerge className="size-4" />}
+              Conciliar movimentos ↔ títulos
             </Button>
             <Button onClick={handleBackfill} disabled={backfill.isPending} variant="outline" className="w-full justify-start gap-2">
               {backfill.isPending ? <Loader2 className="size-4 animate-spin" /> : <Clock className="size-4" />}

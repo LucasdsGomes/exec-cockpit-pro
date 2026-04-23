@@ -39,6 +39,7 @@ import {
   useBankAccountOptions,
   useCostCenterOptions,
   useBusinessUnitOptions,
+  useFilteredEntryCount,
 } from "@/lib/queries/filters";
 
 const NAV = [
@@ -68,6 +69,11 @@ function AppShellInner() {
   const { data: ccs = [] } = useCostCenterOptions(cid);
   const { data: bus = [] } = useBusinessUnitOptions(cid);
   const filters = useFilters();
+  const { data: matchCount } = useFilteredEntryCount(cid, {
+    bankAccountId: filters.bankAccountId,
+    costCenterId: filters.costCenterId,
+    businessUnit: filters.businessUnit,
+  });
   const displayName =
     (user?.user_metadata?.full_name as string) ||
     (user?.user_metadata?.name as string) ||
@@ -262,6 +268,18 @@ function AppShellInner() {
           >
             Limpar filtros
           </button>
+          {filters.isDirty && typeof matchCount === "number" && (
+            <Badge
+              variant="outline"
+              className={
+                matchCount === 0
+                  ? "border-warning/40 text-warning bg-warning/10 text-[11px]"
+                  : "border-primary/30 text-primary bg-primary/5 text-[11px]"
+              }
+            >
+              {matchCount === 0 ? "Nenhum lançamento" : `${matchCount.toLocaleString("pt-BR")} lançamentos`}
+            </Badge>
+          )}
           <Badge
             variant="outline"
             className="ml-auto border-primary/30 text-primary bg-primary/5 font-medium gap-1.5"

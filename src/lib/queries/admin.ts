@@ -335,6 +335,131 @@ export interface BankAccountLite {
   bank_name: string | null;
 }
 
+// ---------- Cost center assignment rules ----------
+
+export interface CostCenterRuleRow {
+  id: string;
+  rule_name: string;
+  match_type: "category" | "supplier" | "customer" | "description";
+  match_pattern: string;
+  cost_center_id: string;
+  priority: number;
+  active: boolean;
+}
+
+export function useCostCenterRules(companyId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["costCenterRules", companyId],
+    enabled: !!companyId,
+    queryFn: async (): Promise<CostCenterRuleRow[]> => {
+      const { data, error } = await supabase
+        .from("cost_center_assign_rules")
+        .select("id, rule_name, match_type, match_pattern, cost_center_id, priority, active")
+        .eq("company_id", companyId!)
+        .order("priority", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as CostCenterRuleRow[];
+    },
+  });
+}
+
+export function useUpsertCostCenterRule(companyId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: Partial<CostCenterRuleRow> & {
+      rule_name: string;
+      match_type: CostCenterRuleRow["match_type"];
+      match_pattern: string;
+      cost_center_id: string;
+    }) => {
+      if (!companyId) throw new Error("Empresa não selecionada");
+      const payload = {
+        company_id: companyId,
+        rule_name: input.rule_name,
+        match_type: input.match_type,
+        match_pattern: input.match_pattern,
+        cost_center_id: input.cost_center_id,
+        priority: input.priority ?? 100,
+        active: input.active ?? true,
+      };
+      if (input.id) {
+        const { error } = await supabase.from("cost_center_assign_rules").update(payload).eq("id", input.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("cost_center_assign_rules").insert(payload);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["costCenterRules", companyId] }),
+  });
+}
+
+export function useDeleteCostCenterRule(companyId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("cost_center_assign_rules").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["costCenterRules", companyId] }),
+  });
+}
+
+export function useApplyCostCenterRules(companyId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      if (!companyId) throw new Error("Empresa não selecionada");
+      const { data, error } = await supabase.rpc("apply_cost_center_rules", { _company: companyId });
+      if (error) throw error;
+      return data as { entries_updated: number; dre_updated: number };
+    },
+    onSuccess: () => qc.invalidateQueries(),
+  });
+}
+
+export function useReconcileBankMovements(companyId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      if (!companyId) throw new Error("Empresa não selecionada");
+      const { data, error } = await supabase.rpc("reconcile_bank_movements", { _company: companyId });
+      if (error) throw error;
+      return data as { matched: number };
+    },
+    onSuccess: () => qc.invalidateQueries(),
+  });
+}
+
+export function useSyncBankStatements(companyId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (lookbackDays: number = 90) => {
+      if (!companyId) throw new Error("Empresa não selecionada");
+      const res = await fetch("/api/public/hooks/omie-sync-now", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          companyId,
+          lookbackDays,
+          mode: "incremental",
+          endpoints: ["movimentacoes_bancarias"],
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["syncBatches", companyId] });
+      qc.invalidateQueries({ queryKey: ["syncLogs", companyId] });
+      qc.invalidateQueries({ queryKey: ["systemHealth", companyId] });
+    },
+  });
+}
+
 export function useBankAccounts(companyId: string | null | undefined) {
   return useQuery({
     queryKey: ["bankAccounts", companyId],
@@ -432,7 +557,10 @@ export function useTriggerSync(companyId: string | null | undefined) {
       if (!companyId) throw new Error("Empresa não selecionada");
       const res = await fetch("/api/public/hooks/omie-sync-now", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
         body: JSON.stringify({ companyId }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
