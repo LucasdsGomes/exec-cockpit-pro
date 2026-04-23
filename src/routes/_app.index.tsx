@@ -11,7 +11,6 @@ import {
   Timer,
   Download,
   FileSpreadsheet,
-  Inbox,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -434,9 +433,9 @@ function HomePage() {
             {alertas.map((a, i) => (
               <InsightCard
                 key={i}
-                level={a.nivel as InsightLevel}
-                title={a.titulo}
-                description={a.desc}
+                level={a.level as InsightLevel}
+                title={a.title}
+                description={a.description}
               />
             ))}
           </CardContent>
@@ -447,22 +446,12 @@ function HomePage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <PaymentList
           title="Próximos a pagar"
-          rows={proximosPagar.map((r) => ({
-            nome: r.fornecedor,
-            venc: r.venc,
-            valor: r.valor,
-            status: r.status,
-          }))}
+          rows={proximosPagar}
           negative
         />
         <PaymentList
           title="Próximos a receber"
-          rows={proximosReceber.map((r) => ({
-            nome: r.cliente,
-            venc: r.venc,
-            valor: r.valor,
-            status: r.status,
-          }))}
+          rows={proximosReceber}
         />
       </div>
     </div>
