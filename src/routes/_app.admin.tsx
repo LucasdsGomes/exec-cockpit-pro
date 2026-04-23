@@ -22,6 +22,7 @@ import { InitialBalancesTab } from "@/components/admin/InitialBalancesTab";
 import { ManualEntriesTab } from "@/components/admin/ManualEntriesTab";
 import { ParametersTab } from "@/components/admin/ParametersTab";
 import { BudgetTab } from "@/components/admin/BudgetTab";
+import { DiagnosticoTab } from "@/components/admin/DiagnosticoTab";
 
 export const Route = createFileRoute("/_app/admin")({
   head: () => ({
@@ -112,6 +113,7 @@ function AdminPage() {
           <TabsTrigger value="ajustes">Ajustes</TabsTrigger>
           <TabsTrigger value="parametros">Parâmetros</TabsTrigger>
           <TabsTrigger value="fila">Fila ({unclassified.data?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="diagnostico">Diagnóstico</TabsTrigger>
         </TabsList>
 
         <TabsContent value="integracoes" className="mt-4 space-y-4">
@@ -310,6 +312,10 @@ function AdminPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="diagnostico" className="mt-4">
+          <DiagnosticoTab companyId={cid} />
         </TabsContent>
       </Tabs>
     </div>
