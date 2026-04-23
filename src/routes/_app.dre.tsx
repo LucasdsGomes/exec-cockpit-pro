@@ -21,6 +21,7 @@ import { useFilters } from "@/lib/filters-context";
 import { downloadCsv } from "@/lib/export-csv";
 import { toast } from "sonner";
 import { downloadPdfReport } from "@/lib/export-pdf";
+import { DreLineDrilldown } from "@/components/dre/DreLineDrilldown";
 
 export const Route = createFileRoute("/_app/dre")({
   head: () => ({
@@ -34,6 +35,7 @@ export const Route = createFileRoute("/_app/dre")({
 
 function DREPage() {
   const [period, setPeriod] = useState("mtd");
+  const [drillLine, setDrillLine] = useState<string | null>(null);
   const { data: company } = useCompany();
   const companyId = company?.id;
   const filters = useFilters();
@@ -138,7 +140,7 @@ function DREPage() {
             <CardContent>
               {loadingDre ? <Skeleton className="h-48" /> : dre.length === 0 ? (
                 <EmptyState message="Sem lançamentos classificados no período. Acesse Admin → DE-PARA para mapear categorias." />
-              ) : <DRETable data={dre} />}
+              ) : <DRETable data={dre} onSelect={(label) => setDrillLine(label)} />}
             </CardContent>
           </Card>
         </TabsContent>
@@ -164,6 +166,15 @@ function DREPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <DreLineDrilldown
+        open={drillLine !== null}
+        onOpenChange={(v) => { if (!v) setDrillLine(null); }}
+        companyId={companyId}
+        lineLabel={drillLine}
+        period={period}
+        filters={filters}
+      />
     </div>
   );
 }
@@ -180,7 +191,7 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
-function DRETable({ data }: { data: DRELine[] }) {
+function DRETable({ data, onSelect }: { data: DRELine[]; onSelect?: (label: string) => void }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -203,7 +214,9 @@ function DRETable({ data }: { data: DRELine[] }) {
                 "border-b border-border/50 hover:bg-muted/30 cursor-pointer transition-colors",
                 isTotal && "bg-primary/[0.04]",
                 isSubtotal && "bg-muted/20",
-              )}>
+              )}
+                onClick={() => onSelect?.(d.conta)}
+              >
                 <td className={cn("py-2.5", (isTotal || isSubtotal) && "font-semibold")}>
                   {d.conta}
                 </td>

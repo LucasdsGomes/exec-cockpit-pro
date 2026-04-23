@@ -5,7 +5,22 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Upload, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
 import { BRL } from "@/lib/format";
-import { useBudgetEntries, useUploadBudget, type BudgetCsvRow } from "@/lib/queries/admin";
+import {
+  useBudgetEntries,
+  useUploadBudget,
+  type BudgetCsvRow,
+  type BudgetScenario,
+} from "@/lib/queries/admin";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+
+const SCENARIOS: { v: BudgetScenario; l: string }[] = [
+  { v: "orcado", l: "Orçado" },
+  { v: "reprojetado", l: "Reprojetado" },
+  { v: "realizado", l: "Realizado" },
+];
 
 /**
  * Expected CSV columns (header row required):
@@ -43,14 +58,16 @@ export function BudgetTab({ companyId }: { companyId: string | null | undefined 
   const upload = useUploadBudget(companyId);
   const fileRef = useRef<HTMLInputElement>(null);
   const [previewCount, setPreviewCount] = useState<number | null>(null);
+  const [scenario, setScenario] = useState<BudgetScenario>("orcado");
+  const [filterScenario, setFilterScenario] = useState<BudgetScenario | "all">("all");
 
   const handleFile = async (file: File) => {
     try {
       const text = await file.text();
       const rows = parseCsv(text);
       setPreviewCount(rows.length);
-      await toast.promise(upload.mutateAsync(rows), {
-        loading: `Importando ${rows.length} linhas...`,
+      await toast.promise(upload.mutateAsync({ rows, scenario }), {
+        loading: `Importando ${rows.length} linhas (${scenario})...`,
         success: (n) => `${n} linhas importadas`,
         error: (e) => `Erro: ${e.message}`,
       });
@@ -60,6 +77,10 @@ export function BudgetTab({ companyId }: { companyId: string | null | undefined 
       if (fileRef.current) fileRef.current.value = "";
     }
   };
+
+  const filtered = (list.data ?? []).filter((b) =>
+    filterScenario === "all" ? true : b.scenario === filterScenario,
+  );
 
   return (
     <div className="space-y-4">
@@ -74,6 +95,15 @@ export function BudgetTab({ companyId }: { companyId: string | null | undefined 
             Cabeçalhos obrigatórios: <code className="font-mono">reference_period, managerial_account, amount</code>.
             Opcional: <code className="font-mono">category_mapped</code>. Período em <code>YYYY-MM</code> ou <code>YYYY-MM-DD</code>.
           </p>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Cenário do upload:</span>
+            <Select value={scenario} onValueChange={(v) => setScenario(v as BudgetScenario)}>
+              <SelectTrigger className="h-8 w-44"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {SCENARIOS.map((s) => <SelectItem key={s.v} value={s.v}>{s.l}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
           <input
             ref={fileRef}
             type="file"
@@ -92,9 +122,21 @@ export function BudgetTab({ companyId }: { companyId: string | null | undefined 
       </Card>
 
       <Card className="bg-card border-border">
-        <CardHeader><CardTitle className="text-base">Linhas de orçamento ({list.data?.length ?? 0})</CardTitle></CardHeader>
+        <CardHeader className="flex-row items-center justify-between gap-2">
+          <CardTitle className="text-base">Linhas de orçamento ({filtered.length})</CardTitle>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">Filtrar:</span>
+            <Select value={filterScenario} onValueChange={(v) => setFilterScenario(v as BudgetScenario | "all")}>
+              <SelectTrigger className="h-8 w-40"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos cenários</SelectItem>
+                {SCENARIOS.map((s) => <SelectItem key={s.v} value={s.v}>{s.l}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
         <CardContent>
-          {list.isLoading ? <Skeleton className="h-32" /> : (list.data ?? []).length === 0 ? (
+          {list.isLoading ? <Skeleton className="h-32" /> : filtered.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhum orçamento cadastrado.</p>
           ) : (
             <div className="overflow-auto max-h-[420px]">
@@ -109,12 +151,16 @@ export function BudgetTab({ companyId }: { companyId: string | null | undefined 
                   </tr>
                 </thead>
                 <tbody>
-                  {(list.data ?? []).map((b) => (
+                  {filtered.map((b) => (
                     <tr key={b.id} className="border-b border-border/60">
                       <td className="py-2 text-xs">{b.reference_period}</td>
                       <td className="py-2">{b.managerial_account}</td>
                       <td className="py-2 text-xs text-muted-foreground">{b.category_mapped ?? "—"}</td>
-                      <td className="py-2 text-xs text-muted-foreground">{b.scenario}</td>
+                      <td className="py-2">
+                        <Badge variant="outline" className="text-[10px] uppercase tracking-wider border-border text-muted-foreground">
+                          {b.scenario}
+                        </Badge>
+                      </td>
                       <td className="py-2 text-right tabular-nums">{BRL(b.amount)}</td>
                     </tr>
                   ))}
