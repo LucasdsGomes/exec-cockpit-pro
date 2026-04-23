@@ -372,8 +372,10 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
   const end = opts.endDate ? new Date(opts.endDate) : today;
 
   const periodFilter = {
-    dDtEmisDe: fmt(start),
-    dDtEmisAte: fmt(end),
+    pagina: 1,
+    registros_por_pagina: 200,
+    filtrar_por_emissao_de: fmt(start),
+    filtrar_por_emissao_ate: fmt(end),
   };
 
   const results: SyncRunResult["endpoints"] = [];
