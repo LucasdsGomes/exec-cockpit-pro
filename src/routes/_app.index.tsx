@@ -4,7 +4,7 @@ import {
   TrendingUp, Wallet, Timer, AlertTriangle, CheckCircle2, Info, XCircle,
 } from "lucide-react";
 import {
-  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid,
+  ResponsiveContainer, Area, XAxis, YAxis, Tooltip, CartesianGrid,
   BarChart, Bar, Legend, Line, ComposedChart,
 } from "recharts";
 import { KpiCard } from "@/components/ui/kpi-card";
