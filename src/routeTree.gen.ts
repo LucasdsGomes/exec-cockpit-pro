@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
+import { Route as AppFluxoDeCaixaRouteImport } from './routes/_app.fluxo-de-caixa'
 import { Route as AppDreRouteImport } from './routes/_app.dre'
 
 const AppRoute = AppRouteImport.update({
@@ -22,6 +23,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppFluxoDeCaixaRoute = AppFluxoDeCaixaRouteImport.update({
+  id: '/fluxo-de-caixa',
+  path: '/fluxo-de-caixa',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppDreRoute = AppDreRouteImport.update({
   id: '/dre',
   path: '/dre',
@@ -31,23 +37,26 @@ const AppDreRoute = AppDreRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/dre': typeof AppDreRoute
+  '/fluxo-de-caixa': typeof AppFluxoDeCaixaRoute
 }
 export interface FileRoutesByTo {
   '/dre': typeof AppDreRoute
+  '/fluxo-de-caixa': typeof AppFluxoDeCaixaRoute
   '/': typeof AppIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/_app/dre': typeof AppDreRoute
+  '/_app/fluxo-de-caixa': typeof AppFluxoDeCaixaRoute
   '/_app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/dre'
+  fullPaths: '/' | '/dre' | '/fluxo-de-caixa'
   fileRoutesByTo: FileRoutesByTo
-  to: '/dre' | '/'
-  id: '__root__' | '/_app' | '/_app/dre' | '/_app/'
+  to: '/dre' | '/fluxo-de-caixa' | '/'
+  id: '__root__' | '/_app' | '/_app/dre' | '/_app/fluxo-de-caixa' | '/_app/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -70,6 +79,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/fluxo-de-caixa': {
+      id: '/_app/fluxo-de-caixa'
+      path: '/fluxo-de-caixa'
+      fullPath: '/fluxo-de-caixa'
+      preLoaderRoute: typeof AppFluxoDeCaixaRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/dre': {
       id: '/_app/dre'
       path: '/dre'
@@ -82,11 +98,13 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppDreRoute: typeof AppDreRoute
+  AppFluxoDeCaixaRoute: typeof AppFluxoDeCaixaRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppDreRoute: AppDreRoute,
+  AppFluxoDeCaixaRoute: AppFluxoDeCaixaRoute,
   AppIndexRoute: AppIndexRoute,
 }
 
