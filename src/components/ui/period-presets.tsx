@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 
-const PRESETS = [
+export const PERIOD_PRESETS = [
   { v: "hoje", l: "Hoje" },
   { v: "7d", l: "7d" },
   { v: "30d", l: "30d" },
@@ -11,16 +11,21 @@ const PRESETS = [
   { v: "12m", l: "12m" },
 ] as const;
 
+export type PeriodPreset = (typeof PERIOD_PRESETS)[number]["v"];
+
 export function PeriodPresets({
+  value,
   defaultValue = "30d",
   onChange,
   className,
 }: {
+  value?: string;
   defaultValue?: string;
   onChange?: (v: string) => void;
   className?: string;
 }) {
-  const [active, setActive] = useState(defaultValue);
+  const [internal, setInternal] = useState(defaultValue);
+  const active = value ?? internal;
   return (
     <div
       role="tablist"
@@ -30,7 +35,7 @@ export function PeriodPresets({
         className,
       )}
     >
-      {PRESETS.map((p) => {
+      {PERIOD_PRESETS.map((p) => {
         const isActive = p.v === active;
         return (
           <button
@@ -39,7 +44,7 @@ export function PeriodPresets({
             aria-selected={isActive}
             type="button"
             onClick={() => {
-              setActive(p.v);
+              if (value === undefined) setInternal(p.v);
               onChange?.(p.v);
             }}
             className={cn(
