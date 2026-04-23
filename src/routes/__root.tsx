@@ -34,10 +34,14 @@ export const Route = createRootRoute({
       { name: "description", content: "Dashboard financeiro-gerencial executivo da Hitech Electric: DRE, Fluxo de Caixa, Ciclo Financeiro e Projeção do Balanço." },
       { name: "author", content: "Hitech Electric" },
       { property: "og:title", content: "Hitech Electric — Cockpit Financeiro" },
-      { property: "og:description", content: "DRE, Fluxo de Caixa, Ciclo Financeiro e Projeção do Balanço em tempo real." },
+      { property: "og:description", content: "Dashboard financeiro-gerencial executivo da Hitech Electric: DRE, Fluxo de Caixa, Ciclo Financeiro e Projeção do Balanço." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Hitech Electric — Cockpit Financeiro" },
+      { name: "twitter:description", content: "Dashboard financeiro-gerencial executivo da Hitech Electric: DRE, Fluxo de Caixa, Ciclo Financeiro e Projeção do Balanço." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/ce35ed9f-25a7-4a11-9cdc-8811c13b6178/id-preview-a6aa2f2e--46625b55-ade5-4a37-932e-8a95254f22e7.lovable.app-1776910962925.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/ce35ed9f-25a7-4a11-9cdc-8811c13b6178/id-preview-a6aa2f2e--46625b55-ade5-4a37-932e-8a95254f22e7.lovable.app-1776910962925.png" },
     ],
     links: [
       {
