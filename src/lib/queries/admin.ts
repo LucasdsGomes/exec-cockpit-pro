@@ -181,8 +181,12 @@ export interface BudgetCsvRow {
 export function useUploadBudget(companyId: string | null | undefined) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (rows: BudgetCsvRow[]) => {
+    mutationFn: async (
+      arg: BudgetCsvRow[] | { rows: BudgetCsvRow[]; scenario?: BudgetScenario },
+    ) => {
       if (!companyId) throw new Error("Empresa não selecionada");
+      const rows = Array.isArray(arg) ? arg : arg.rows;
+      const scenario: BudgetScenario = (Array.isArray(arg) ? "orcado" : (arg.scenario ?? "orcado"));
       if (!rows.length) throw new Error("Nenhuma linha para importar");
       const payload = rows.map((r) => ({
         company_id: companyId,
@@ -190,7 +194,7 @@ export function useUploadBudget(companyId: string | null | undefined) {
         managerial_account: r.managerial_account,
         amount: r.amount,
         category_mapped: r.category_mapped ?? null,
-        scenario: "orcado" as const,
+        scenario,
       }));
       const { error } = await supabase.from("budget_entries").insert(payload);
       if (error) throw error;
@@ -199,6 +203,8 @@ export function useUploadBudget(companyId: string | null | undefined) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["budgetEntries", companyId] }),
   });
 }
+
+export type BudgetScenario = "orcado" | "revisado" | "tendencia";
 
 export interface BudgetEntryRow {
   id: string;
