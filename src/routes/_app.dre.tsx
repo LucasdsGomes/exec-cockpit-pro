@@ -258,6 +258,65 @@ function DRETable({ data, onSelect }: { data: DRELine[]; onSelect?: (label: stri
 }
 
 function DREWaterfall({ steps }: { steps: { name: string; value: number; type: "total" | "subtotal" | "neg" | "pos" }[] }) {
+function DREList({ data, onSelect }: { data: DRELine[]; onSelect?: (label: string) => void }) {
+  return (
+    <div className="space-y-1.5">
+      {data.map((d) => {
+        const isTotal = d.destaque === "total";
+        const isSubtotal = d.destaque === "subtotal";
+        return (
+          <button
+            key={d.conta}
+            type="button"
+            onClick={() => onSelect?.(d.conta)}
+            className={cn(
+              "w-full text-left rounded-lg border border-border/60 bg-card/40 px-3 py-2.5 active:scale-[0.99] transition-transform",
+              isTotal && "bg-primary/[0.06] border-primary/30",
+              isSubtotal && "bg-muted/30",
+            )}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <span
+                className={cn(
+                  "text-sm leading-snug min-w-0 break-words",
+                  (isTotal || isSubtotal) && "font-semibold",
+                )}
+              >
+                {d.conta}
+              </span>
+              <span
+                className={cn(
+                  "tabular-nums font-medium text-sm shrink-0",
+                  isTotal && "text-primary text-base",
+                )}
+              >
+                {BRL(d.valor)}
+              </span>
+            </div>
+            <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+              <span className="tabular-nums">{d.pctReceita.toFixed(1)}% receita</span>
+              <span
+                className={cn(
+                  "inline-flex items-center gap-0.5 tabular-nums",
+                  d.varPct >= 0 ? "text-success" : "text-destructive",
+                )}
+              >
+                {d.varPct >= 0 ? (
+                  <ArrowUpRight className="size-3" />
+                ) : (
+                  <ArrowDownRight className="size-3" />
+                )}
+                {d.varPct.toFixed(1)}%
+              </span>
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function DREWaterfallChart({ steps }: { steps: { name: string; value: number; type: "total" | "subtotal" | "neg" | "pos" }[] }) {
   const isMobile = useIsMobile();
   if (!steps.length) {
     return <div className="h-full grid place-items-center text-sm text-muted-foreground">Sem dados para o período.</div>;
