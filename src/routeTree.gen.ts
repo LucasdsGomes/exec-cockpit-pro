@@ -15,6 +15,7 @@ import { Route as AppProjecaoBalancoRouteImport } from './routes/_app.projecao-b
 import { Route as AppFluxoDeCaixaRouteImport } from './routes/_app.fluxo-de-caixa'
 import { Route as AppDreRouteImport } from './routes/_app.dre'
 import { Route as AppCicloFinanceiroRouteImport } from './routes/_app.ciclo-financeiro'
+import { Route as AppAdminRouteImport } from './routes/_app.admin'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -45,15 +46,22 @@ const AppCicloFinanceiroRoute = AppCicloFinanceiroRouteImport.update({
   path: '/ciclo-financeiro',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAdminRoute = AppAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/admin': typeof AppAdminRoute
   '/ciclo-financeiro': typeof AppCicloFinanceiroRoute
   '/dre': typeof AppDreRoute
   '/fluxo-de-caixa': typeof AppFluxoDeCaixaRoute
   '/projecao-balanco': typeof AppProjecaoBalancoRoute
 }
 export interface FileRoutesByTo {
+  '/admin': typeof AppAdminRoute
   '/ciclo-financeiro': typeof AppCicloFinanceiroRoute
   '/dre': typeof AppDreRoute
   '/fluxo-de-caixa': typeof AppFluxoDeCaixaRoute
@@ -63,6 +71,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/_app/admin': typeof AppAdminRoute
   '/_app/ciclo-financeiro': typeof AppCicloFinanceiroRoute
   '/_app/dre': typeof AppDreRoute
   '/_app/fluxo-de-caixa': typeof AppFluxoDeCaixaRoute
@@ -73,12 +82,14 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/admin'
     | '/ciclo-financeiro'
     | '/dre'
     | '/fluxo-de-caixa'
     | '/projecao-balanco'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/admin'
     | '/ciclo-financeiro'
     | '/dre'
     | '/fluxo-de-caixa'
@@ -87,6 +98,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_app'
+    | '/_app/admin'
     | '/_app/ciclo-financeiro'
     | '/_app/dre'
     | '/_app/fluxo-de-caixa'
@@ -142,10 +154,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCicloFinanceiroRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/admin': {
+      id: '/_app/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AppAdminRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
+  AppAdminRoute: typeof AppAdminRoute
   AppCicloFinanceiroRoute: typeof AppCicloFinanceiroRoute
   AppDreRoute: typeof AppDreRoute
   AppFluxoDeCaixaRoute: typeof AppFluxoDeCaixaRoute
@@ -154,6 +174,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAdminRoute: AppAdminRoute,
   AppCicloFinanceiroRoute: AppCicloFinanceiroRoute,
   AppDreRoute: AppDreRoute,
   AppFluxoDeCaixaRoute: AppFluxoDeCaixaRoute,
