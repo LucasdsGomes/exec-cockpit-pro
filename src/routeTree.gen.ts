@@ -13,6 +13,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as AppFluxoDeCaixaRouteImport } from './routes/_app.fluxo-de-caixa'
 import { Route as AppDreRouteImport } from './routes/_app.dre'
+import { Route as AppCicloFinanceiroRouteImport } from './routes/_app.ciclo-financeiro'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -33,13 +34,20 @@ const AppDreRoute = AppDreRouteImport.update({
   path: '/dre',
   getParentRoute: () => AppRoute,
 } as any)
+const AppCicloFinanceiroRoute = AppCicloFinanceiroRouteImport.update({
+  id: '/ciclo-financeiro',
+  path: '/ciclo-financeiro',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/ciclo-financeiro': typeof AppCicloFinanceiroRoute
   '/dre': typeof AppDreRoute
   '/fluxo-de-caixa': typeof AppFluxoDeCaixaRoute
 }
 export interface FileRoutesByTo {
+  '/ciclo-financeiro': typeof AppCicloFinanceiroRoute
   '/dre': typeof AppDreRoute
   '/fluxo-de-caixa': typeof AppFluxoDeCaixaRoute
   '/': typeof AppIndexRoute
@@ -47,16 +55,23 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/_app/ciclo-financeiro': typeof AppCicloFinanceiroRoute
   '/_app/dre': typeof AppDreRoute
   '/_app/fluxo-de-caixa': typeof AppFluxoDeCaixaRoute
   '/_app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/dre' | '/fluxo-de-caixa'
+  fullPaths: '/' | '/ciclo-financeiro' | '/dre' | '/fluxo-de-caixa'
   fileRoutesByTo: FileRoutesByTo
-  to: '/dre' | '/fluxo-de-caixa' | '/'
-  id: '__root__' | '/_app' | '/_app/dre' | '/_app/fluxo-de-caixa' | '/_app/'
+  to: '/ciclo-financeiro' | '/dre' | '/fluxo-de-caixa' | '/'
+  id:
+    | '__root__'
+    | '/_app'
+    | '/_app/ciclo-financeiro'
+    | '/_app/dre'
+    | '/_app/fluxo-de-caixa'
+    | '/_app/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -93,16 +108,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDreRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/ciclo-financeiro': {
+      id: '/_app/ciclo-financeiro'
+      path: '/ciclo-financeiro'
+      fullPath: '/ciclo-financeiro'
+      preLoaderRoute: typeof AppCicloFinanceiroRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
+  AppCicloFinanceiroRoute: typeof AppCicloFinanceiroRoute
   AppDreRoute: typeof AppDreRoute
   AppFluxoDeCaixaRoute: typeof AppFluxoDeCaixaRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppCicloFinanceiroRoute: AppCicloFinanceiroRoute,
   AppDreRoute: AppDreRoute,
   AppFluxoDeCaixaRoute: AppFluxoDeCaixaRoute,
   AppIndexRoute: AppIndexRoute,
