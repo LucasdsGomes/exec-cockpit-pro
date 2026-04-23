@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { periodToRange, monthLabelBR, shortDateBR, type DateRange } from "@/lib/period";
+import type { GlobalFilters } from "@/lib/filters-context";
 
 export interface MonthPoint {
   mes: string;
@@ -70,25 +71,41 @@ export function useTrend12m(companyId: string | null | undefined) {
   });
 }
 
-export function useCashDaily(companyId: string | null | undefined, period: string = "30d") {
+export function useCashDaily(
+  companyId: string | null | undefined,
+  period: string = "30d",
+  filters?: Partial<GlobalFilters>,
+) {
+  const ba = filters?.bankAccountId ?? null;
+  const mode = filters?.viewMode ?? "consolidado";
   return useQuery({
-    queryKey: ["cashDaily", companyId, period],
+    queryKey: ["cashDaily", companyId, period, ba, mode],
     enabled: !!companyId,
     queryFn: async (): Promise<DayPoint[]> => {
       const range: DateRange = periodToRange(period);
+      const realQ = supabase
+        .from("dfc_realized_base")
+        .select("cash_date, amount_signed, flow_type")
+        .eq("company_id", companyId!)
+        .gte("cash_date", range.start)
+        .lte("cash_date", range.end);
+      const fcQ = supabase
+        .from("dfc_forecast_base")
+        .select("forecast_date, amount_signed")
+        .eq("company_id", companyId!)
+        .gte("forecast_date", range.start)
+        .lte("forecast_date", range.end);
+      if (ba) {
+        realQ.eq("bank_account_id", ba);
+        fcQ.eq("bank_account_id", ba);
+      }
       const [recRes, fcRes] = await Promise.all([
-        supabase
-          .from("dfc_realized_base")
-          .select("cash_date, amount_signed, flow_type")
-          .eq("company_id", companyId!)
-          .gte("cash_date", range.start)
-          .lte("cash_date", range.end),
-        supabase
-          .from("dfc_forecast_base")
-          .select("forecast_date, amount_signed")
-          .eq("company_id", companyId!)
-          .gte("forecast_date", range.start)
-          .lte("forecast_date", range.end),
+        mode === "previsto"
+          ? Promise.resolve({ data: [] as { cash_date: string; amount_signed: number; flow_type: string }[] })
+          : realQ,
+        mode === "realizado"
+          ? Promise.resolve({ data: [] as { forecast_date: string; amount_signed: number }[] })
+          : fcQ,
       ]);
 
       const days = new Map<string, { entrada: number; saida: number }>();
@@ -106,8 +123,8 @@ export function useCashDaily(companyId: string | null | undefined, period: strin
         }
       };
       consume((recRes.data ?? []).map((r) => ({ date: String(r.cash_date), v: Number(r.amount_signed ?? 0) })));
-      // If realizado is empty, fall back to forecast for visualization
-      if ((recRes.data ?? []).length === 0) {
+      // If realizado is empty (or user picked previsto/consolidado), include forecast
+      if (mode !== "realizado" && (recRes.data ?? []).length === 0) {
         consume((fcRes.data ?? []).map((r) => ({ date: String(r.forecast_date), v: Number(r.amount_signed ?? 0) })));
       }
 
