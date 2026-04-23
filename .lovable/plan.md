@@ -1,89 +1,64 @@
 
 
-# Fluxo de Caixa olhando para frente + pendências
+# O que ainda falta — checkpoint pós-Frente A
 
-## Confirmação do diagnóstico
+## Status
 
-**Sim, confere.** Hoje o Fluxo de Caixa olha **só para trás**:
+| Frente | Status |
+|---|---|
+| Filtros globais + badge de contagem | ✅ |
+| Backfill OMIE (banco/cliente/fornecedor) | ✅ |
+| Wizard de saldo inicial | ✅ |
+| Sync de extratos OMIE + reconciliação | ✅ |
+| Regras de Centro de Custo | ✅ |
+| Cron diário (`pg_cron` 6h UTC) | ✅ |
+| Checklist de onboarding na Home | ✅ |
+| **Frente A — Fluxo de Caixa forward-looking** | ✅ |
 
-- `periodToRange("30d")` retorna `[hoje−29, hoje]` — janela passada.
-- A aba "DFC Prevista" usa exatamente os mesmos dados realizados, multiplicados por `1.04` (placeholder, não é projeção real).
-- O heatmap de vencimentos é a única parte forward-looking (próximos 28 dias), mas fica isolado.
-- KPIs ("Saldo final", "Entradas/Saídas") referem-se ao período passado, não ao caixa projetado de fato.
+## Pendências (Frente B do plano aprovado)
 
-Resultado: um diretor abre a tela esperando "vou ter caixa para os próximos 60 dias?" e vê "tive caixa nos últimos 30 dias".
+### B.1. Status de extrato por conta bancária
+Em **Admin → Saldos Iniciais**: coluna "Último extrato em…" por `bank_account` (lendo `max(movement_date)` de `bank_movements`) + botão de resync individual chamando `runBankStatementsSync` para uma conta específica.
 
-## Frente A — Reorientar Fluxo de Caixa para o futuro (prioridade desta rodada)
+### B.2. Drill-down DRE → lançamentos
+Linhas do DRE clicáveis abrindo modal com os `financial_entries` que compõem o número, respeitando filtros ativos (período, unidade, CC, conta). Inclui export CSV do recorte.
 
-### A.1. Presets de período com horizonte futuro
-Adicionar opções no `PeriodPresets` específicas de tesouraria:
-- **Próximos 7 dias**, **Próximos 30 dias**, **Próximos 60 dias**, **Próximos 90 dias** (default na página de Fluxo).
-- Estender `periodToRange` com casos `next7`, `next30`, `next60`, `next90` retornando `[hoje, hoje+N]`.
-- Manter os presets retrospectivos disponíveis para análise histórica.
-- Default da página `/fluxo-de-caixa`: **`next30`**.
-
-### A.2. Projeção real de saldo (substituir o `*1.04` placeholder)
-Construir série diária verdadeira em `useCashProjection(companyId, days)`:
-1. Saldo inicial = saldo atual de caixa (saldos iniciais + realizados até hoje).
-2. Para cada dia futuro D em `[hoje, hoje+N]`:
-   - Entradas previstas = `receivable_entries` com `due_date = D` e ainda não recebidos.
-   - Saídas previstas = `payable_entries` com `due_date = D` e ainda não pagos.
-   - (Opcional) recorrências fixas de `manual_entries` marcadas como recorrentes.
-3. Saldo do dia = saldo anterior + entradas − saídas.
-4. Marcar dias com saldo negativo ou abaixo do mínimo configurado.
-
-### A.3. KPIs reescritos para perspectiva futura
-- **Saldo atual** (hoje) — substitui "Saldo inicial".
-- **Entradas previstas** (no horizonte selecionado).
-- **Saídas previstas** (no horizonte selecionado).
-- **Saldo projetado ao final** + delta vs. hoje.
-- Badge extra: **"Menor saldo no período: R$ X em DD/MM"** com cor de alerta se < mínimo configurável.
-
-### A.4. Reorganizar as abas
-Trocar "DFC Realizada / DFC Prevista" por:
-- **Projeção** (default) — gráfico de área com saldo projetado, linha de saldo mínimo, marcadores de dias críticos.
-- **Calendário** — heatmap de 28 dias (já existe, expandir para 60).
-- **Histórico** — DFC realizada por natureza (operacional/investimento/financiamento), com janela retrospectiva selecionável.
-
-### A.5. Tabela DFC orientada ao futuro
-Na aba Projeção, mostrar tabela **DFC Prevista por natureza** agregando `dfc_forecast_base` por `flow_type` no horizonte futuro — não o realizado retrospectivo.
-
-### A.6. Alerta de saldo mínimo
-Campo configurável em **Admin → Parâmetros**: "Saldo mínimo de caixa" (já tem `Parameters` mas precisa expor essa chave). Aparece como `ReferenceLine` no gráfico e dispara `InsightCard` quando a projeção cruza para baixo.
-
-## Frente B — Pendências carry-over (continuação do roadmap)
-
-### B.1. Status visível por conta bancária (Frente 3 anterior)
-Em **Admin → Saldos Iniciais**, adicionar coluna "Último extrato em…" e botão de resync individual por `bank_account`.
-
-### B.2. Drill-down DRE → lançamentos (Frente 4 anterior)
-Modal listando os `financial_entries` que compõem cada linha do DRE, respeitando filtros ativos.
-
-### B.3. Override manual de Centro de Custo em massa (Frente 5 anterior)
-Tela "Lançamentos sem CC" com seleção múltipla e atribuição em batch.
+### B.3. Override manual de Centro de Custo em massa
+Nova aba **Admin → Lançamentos sem CC**: lista paginada de `financial_entries` com `cost_center_id IS NULL`, seleção múltipla (checkbox), atribuição em batch via dropdown de CC + botão "Aplicar a N selecionados". Complementa as regras automáticas para casos pontuais.
 
 ### B.4. Cenários múltiplos de orçamento
-Seletor `orcado | revisado | tendencia` em `BudgetTab` e nas comparações.
+Seletor `orcado | revisado | tendencia` em `BudgetTab` (criação/edição) e nas comparações Realizado vs Orçado em DRE/Fluxo. Schema `budget_scenario` já suporta — só falta UI.
 
 ### B.5. Importação OFX/CSV manual
-Fallback para contas sem `nCodCC` configurado na OMIE.
+Upload de OFX/CSV em **Admin → Saldos Iniciais** como fallback para contas sem `nCodCC` na OMIE. Parser básico → popula `bank_movements` direto + dispara reconciliação.
+
+## Pendências menores (carry-over)
+
+- **View de execuções do cron** em Admin → Diagnóstico lendo `cron.job_run_details` (mostra última rodada de `daily-financial-pipeline` com status/duração).
+- **Empty state inteligente** nas páginas que mostram zero quando filtros não casam: aviso "Nenhum lançamento — [Limpar filtro]" em vez de KPIs zerados sem contexto.
 
 ## Detalhes técnicos
 
-- Arquivos: `src/lib/period.ts` (presets futuros), `src/components/ui/period-presets.tsx` (UI), `src/lib/queries/dfc.ts` (nova `useCashProjection`), `src/routes/_app.fluxo-de-caixa.tsx` (reorganização das abas e KPIs), `src/components/admin/ParametersTab.tsx` (saldo mínimo), `src/components/admin/InitialBalancesTab.tsx` (status de extrato).
-- Migration: nenhum schema novo necessário para A — `payable_entries`, `receivable_entries` e `dfc_forecast_base` já têm `due_date`/`forecast_date`. Para B.4 já existe enum `budget_scenario`.
-- Default do filtro de modo na página Fluxo: forçar **`previsto`** quando o horizonte for futuro.
+- **B.1**: nova query `useBankAccountsStatus(companyId)` agregando `bank_movements` por conta; botão chama `runBankStatementsSync(company, bankAccountId)` (a função já aceita parâmetro opcional ou precisará aceitar).
+- **B.2**: novo componente `<DreLineDrilldown>` reutilizável; query `useDreEntriesByGroup(companyId, group, range, filters)` em `src/lib/queries/dre.ts`.
+- **B.3**: nova rota/aba `UnassignedEntriesTab.tsx`; mutation `bulkAssignCostCenter(entryIds[], costCenterId)`.
+- **B.4**: alterar `BudgetTab` para aceitar `scenario` no formulário e nos selects; query de leitura passa a filtrar por cenário ativo (default `orcado`).
+- **B.5**: dependência `ofx-js` ou parser próprio (OFX é XML simples); CSV parsing já viável com `papaparse` se já instalado, ou parser manual.
+- **Migration**: nenhuma nova tabela necessária — todos os campos já existem.
 
 ## Ordem sugerida
 
-1. **A.1 + A.2 + A.3** — núcleo: presets futuros, projeção real, KPIs forward-looking.
-2. **A.4 + A.5** — abas e tabela reorganizadas.
-3. **A.6** — saldo mínimo configurável.
-4. **B.1 → B.5** — pendências do roadmap, na ordem indicada.
+1. **B.1** — visibilidade rápida do estado dos extratos.
+2. **B.3** — destrava o filtro de CC para lançamentos que escapam das regras.
+3. **B.2** — drill-down DRE (alto valor de UX).
+4. **View do cron** + **empty states** — polimento.
+5. **B.4** — cenários de orçamento.
+6. **B.5** — importação manual OFX/CSV (último porque depende menos da automação).
 
 ## Fora de escopo
 
-- Simulação what-if (alterar premissas e ver impacto).
-- Cenários múltiplos de projeção (otimista/pessimista) lado a lado.
-- Forecast com ML/sazonalidade — só matemática determinística por enquanto.
+- What-if simulator (mexer em premissas e ver impacto na projeção).
+- Cenários de projeção otimista/pessimista lado a lado.
+- Conciliação contábil completa por plano de contas.
+- Forecast com ML/sazonalidade.
 
