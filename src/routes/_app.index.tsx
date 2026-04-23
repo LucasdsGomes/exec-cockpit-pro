@@ -44,7 +44,7 @@ import { BRL } from "@/lib/format";
 import { useCompany } from "@/lib/queries/company";
 import { useKpis } from "@/lib/queries/kpis";
 import { useFilters } from "@/lib/filters-context";
-import { useInitialBalances } from "@/lib/queries/admin";
+import { useInitialBalances, useSyncBatches, useCategoryMappings } from "@/lib/queries/admin";
 import { Link } from "@tanstack/react-router";
 import {
   useTrend12m,
@@ -80,6 +80,12 @@ function HomePage() {
   const { data: kpis, isLoading: loadingKpis } = useKpis(period, companyId, filters);
   const { data: initialBalances = [] } = useInitialBalances(companyId);
   const noBalances = initialBalances.length === 0;
+  const { data: batches = [] } = useSyncBatches(companyId);
+  const { data: mappings = [] } = useCategoryMappings(companyId);
+  const hasSync = batches.length > 0;
+  const hasMappings = mappings.some((m) => m.dre_category || m.dfc_category);
+  const onboardingPending =
+    !!companyId && (!hasSync || noBalances || !hasMappings);
   const { data: tendencia12m = [] } = useTrend12m(companyId);
   const { data: caixaDiario = [] } = useCashDaily(companyId, period, filters);
   const { data: proximosPagar = [] } = useUpcomingPayables(companyId, 14);
@@ -141,6 +147,27 @@ function HomePage() {
 
   return (
     <div className="space-y-6">
+      {onboardingPending && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Activity className="size-4 text-primary" /> Configuração inicial pendente
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <ul className="text-sm space-y-1.5">
+              <ChecklistItem done={hasSync} label="Primeira sincronização OMIE executada" />
+              <ChecklistItem done={!noBalances} label="Saldos iniciais cadastrados por conta bancária" />
+              <ChecklistItem done={hasMappings} label="Categorias OMIE mapeadas (DE-PARA)" />
+            </ul>
+            <div className="mt-3">
+              <Link to="/admin">
+                <Button size="sm" variant="outline" className="h-8">Ir para Admin</Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       {noBalances && companyId && (
         <Card className="border-warning/40 bg-warning/5">
           <CardContent className="py-3 flex items-center justify-between gap-4">
