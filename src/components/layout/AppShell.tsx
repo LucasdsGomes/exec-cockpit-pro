@@ -33,6 +33,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { PeriodPresets } from "@/components/ui/period-presets";
+import { FiltersProvider, useFilters, type ViewMode } from "@/lib/filters-context";
+import { useCompany } from "@/lib/queries/company";
+import {
+  useBankAccountOptions,
+  useCostCenterOptions,
+  useBusinessUnitOptions,
+} from "@/lib/queries/filters";
 
 const NAV = [
   { to: "/", label: "Home", icon: LayoutDashboard },
@@ -44,9 +51,23 @@ const NAV = [
 ] as const;
 
 export function AppShell() {
+  return (
+    <FiltersProvider>
+      <AppShellInner />
+    </FiltersProvider>
+  );
+}
+
+function AppShellInner() {
   const loc = useLocation();
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const { data: company } = useCompany();
+  const cid = company?.id;
+  const { data: banks = [] } = useBankAccountOptions(cid);
+  const { data: ccs = [] } = useCostCenterOptions(cid);
+  const { data: bus = [] } = useBusinessUnitOptions(cid);
+  const filters = useFilters();
   const displayName =
     (user?.user_metadata?.full_name as string) ||
     (user?.user_metadata?.name as string) ||
@@ -195,46 +216,48 @@ export function AppShell() {
           <span className="h-5 w-px bg-border mx-1" />
           <FilterSelect
             placeholder="Unidade"
-            defaultValue="todas"
+            value={filters.businessUnit ?? "__all"}
+            onChange={(v) => filters.setBusinessUnit(v === "__all" ? null : v)}
             items={[
-              { v: "todas", l: "Todas as unidades" },
-              { v: "matriz", l: "Matriz · SP" },
-              { v: "rj", l: "Filial · RJ" },
-              { v: "mg", l: "Filial · MG" },
+              { v: "__all", l: "Todas as unidades" },
+              ...bus.map((u) => ({ v: u, l: u })),
             ]}
+            disabled={bus.length === 0}
           />
           <FilterSelect
             placeholder="Conta bancária"
-            defaultValue="todas"
+            value={filters.bankAccountId ?? "__all"}
+            onChange={(v) => filters.setBankAccountId(v === "__all" ? null : v)}
             items={[
-              { v: "todas", l: "Todas as contas" },
-              { v: "itau", l: "Itaú CC 12345-6" },
-              { v: "brad", l: "Bradesco CC 98765-4" },
-              { v: "sant", l: "Santander CC 55555-1" },
+              { v: "__all", l: "Todas as contas" },
+              ...banks.map((b) => ({ v: b.id, l: b.label })),
             ]}
+            disabled={banks.length === 0}
           />
           <FilterSelect
             placeholder="Centro de custo"
-            defaultValue="todos"
+            value={filters.costCenterId ?? "__all"}
+            onChange={(v) => filters.setCostCenterId(v === "__all" ? null : v)}
             items={[
-              { v: "todos", l: "Todos C. Custo" },
-              { v: "com", l: "Comercial" },
-              { v: "ope", l: "Operações" },
-              { v: "adm", l: "Administrativo" },
+              { v: "__all", l: "Todos C. Custo" },
+              ...ccs.map((c) => ({ v: c.id, l: c.label })),
             ]}
+            disabled={ccs.length === 0}
           />
           <FilterSelect
             placeholder="Visão"
-            defaultValue="cons"
+            value={filters.viewMode}
+            onChange={(v) => filters.setViewMode(v as ViewMode)}
             items={[
-              { v: "real", l: "Realizado" },
-              { v: "prev", l: "Previsto" },
-              { v: "cons", l: "Consolidado" },
-              { v: "orc", l: "Orçado vs Realizado" },
+              { v: "consolidado", l: "Consolidado" },
+              { v: "realizado", l: "Realizado" },
+              { v: "previsto", l: "Previsto" },
             ]}
           />
           <button
             type="button"
+            onClick={filters.reset}
+            disabled={!filters.isDirty}
             className="h-7 px-2.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors rounded-md"
           >
             Limpar filtros
@@ -260,16 +283,20 @@ export function AppShell() {
 
 function FilterSelect({
   placeholder,
-  defaultValue,
+  value,
+  onChange,
   items,
+  disabled,
 }: {
   placeholder: string;
-  defaultValue: string;
+  value: string;
+  onChange: (v: string) => void;
   items: { v: string; l: string }[];
+  disabled?: boolean;
 }) {
   return (
-    <Select defaultValue={defaultValue}>
-      <SelectTrigger className="h-7 w-auto min-w-[130px] bg-input/40 border-border text-[11px] font-medium hover:bg-input/70 transition-colors">
+    <Select value={value} onValueChange={onChange} disabled={disabled}>
+      <SelectTrigger className="h-7 w-auto min-w-[130px] bg-input/40 border-border text-[11px] font-medium hover:bg-input/70 transition-colors disabled:opacity-50">
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
