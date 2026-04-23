@@ -1,4 +1,4 @@
-import { Link, Outlet, useLocation } from "@tanstack/react-router";
+import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard,
   BarChart3,
@@ -11,6 +11,7 @@ import {
   RefreshCw,
   ChevronDown,
   Zap,
+  LogOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,15 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { sync } from "@/lib/mock-data";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const NAV = [
   { to: "/", label: "Home", icon: LayoutDashboard },
@@ -35,6 +45,19 @@ const NAV = [
 
 export function AppShell() {
   const loc = useLocation();
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+  const displayName =
+    (user?.user_metadata?.full_name as string) ||
+    (user?.user_metadata?.name as string) ||
+    user?.email?.split("@")[0] ||
+    "Usuário";
+  const initials = displayName
+    .split(" ")
+    .map((s) => s[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
   return (
     <div className="min-h-screen bg-background text-foreground flex">
       {/* Sidebar */}
@@ -99,16 +122,34 @@ export function AppShell() {
             <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
               <Bell className="size-4" />
             </Button>
-            <div className="flex items-center gap-2 pl-3 border-l border-border">
-              <div className="size-8 rounded-full bg-primary text-primary-foreground grid place-items-center text-xs font-semibold">
-                CF
-              </div>
-              <div className="leading-tight">
-                <div className="text-sm font-medium">CFO Hitech</div>
-                <div className="text-[11px] text-muted-foreground">Matriz - SP</div>
-              </div>
-              <ChevronDown className="size-4 text-muted-foreground" />
-            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center gap-2 pl-3 border-l border-border outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
+                  <div className="size-8 rounded-full bg-primary text-primary-foreground grid place-items-center text-xs font-semibold">
+                    {initials}
+                  </div>
+                  <div className="leading-tight text-left">
+                    <div className="text-sm font-medium">{displayName}</div>
+                    <div className="text-[11px] text-muted-foreground">{user?.email ?? "—"}</div>
+                  </div>
+                  <ChevronDown className="size-4 text-muted-foreground" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>Conta</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={async () => {
+                    await signOut();
+                    navigate({ to: "/auth" });
+                  }}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <LogOut className="size-4 mr-2" />
+                  Sair
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </header>
 
