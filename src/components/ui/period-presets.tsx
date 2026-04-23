@@ -1,5 +1,13 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export const PERIOD_PRESETS = [
   { v: "hoje", l: "Hoje" },
@@ -35,6 +43,36 @@ export function PeriodPresets({
 }) {
   const [internal, setInternal] = useState(defaultValue);
   const active = value ?? internal;
+  const isMobile = useIsMobile();
+
+  if (isMobile) {
+    return (
+      <Select
+        value={active}
+        onValueChange={(v) => {
+          if (value === undefined) setInternal(v);
+          onChange?.(v);
+        }}
+      >
+        <SelectTrigger
+          className={cn(
+            "h-9 w-auto min-w-[110px] bg-input/40 border-border text-xs font-medium",
+            className,
+          )}
+        >
+          <SelectValue placeholder="Período" />
+        </SelectTrigger>
+        <SelectContent>
+          {PERIOD_PRESETS.map((p) => (
+            <SelectItem key={p.v} value={p.v} className="text-sm">
+              {p.l}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    );
+  }
+
   return (
     <div
       role="tablist"
