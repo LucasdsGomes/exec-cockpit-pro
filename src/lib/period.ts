@@ -50,10 +50,30 @@ export function periodToRange(preset: string, ref: Date = new Date()): DateRange
       start = new Date(today.getFullYear(), today.getMonth() - 11, 1);
       label = "Últimos 12 meses";
       break;
+    case "next7":
+      end.setDate(today.getDate() + 7);
+      label = "Próximos 7 dias";
+      break;
+    case "next30":
+      end.setDate(today.getDate() + 30);
+      label = "Próximos 30 dias";
+      break;
+    case "next60":
+      end.setDate(today.getDate() + 60);
+      label = "Próximos 60 dias";
+      break;
+    case "next90":
+      end.setDate(today.getDate() + 90);
+      label = "Próximos 90 dias";
+      break;
     default:
       start.setDate(today.getDate() - 29);
   }
   return { start: fmt(start), end: fmt(end), label };
+}
+
+export function isFuturePreset(preset: string): boolean {
+  return preset === "next7" || preset === "next30" || preset === "next60" || preset === "next90";
 }
 
 export function previousRange(range: DateRange): DateRange {
