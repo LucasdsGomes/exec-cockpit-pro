@@ -14,11 +14,14 @@ import {
   useSyncBatches,
   useSyncLogs,
   useCategoryMappings,
-  useInitialBalances,
   useUnclassifiedEntries,
   useTriggerSync,
   useReclassify,
 } from "@/lib/queries/admin";
+import { InitialBalancesTab } from "@/components/admin/InitialBalancesTab";
+import { ManualEntriesTab } from "@/components/admin/ManualEntriesTab";
+import { ParametersTab } from "@/components/admin/ParametersTab";
+import { BudgetTab } from "@/components/admin/BudgetTab";
 
 export const Route = createFileRoute("/_app/admin")({
   head: () => ({
@@ -43,7 +46,6 @@ function AdminPage() {
   const batches = useSyncBatches(cid);
   const logs = useSyncLogs(cid);
   const mappings = useCategoryMappings(cid);
-  const initialBalances = useInitialBalances(cid);
   const unclassified = useUnclassifiedEntries(cid);
   const triggerSync = useTriggerSync(cid);
   const reclassify = useReclassify(cid);
@@ -106,6 +108,9 @@ function AdminPage() {
           <TabsTrigger value="integracoes">Integrações</TabsTrigger>
           <TabsTrigger value="depara">DE-PARA ({mappings.data?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="saldos">Saldos iniciais</TabsTrigger>
+          <TabsTrigger value="orcamento">Orçamento</TabsTrigger>
+          <TabsTrigger value="ajustes">Ajustes</TabsTrigger>
+          <TabsTrigger value="parametros">Parâmetros</TabsTrigger>
           <TabsTrigger value="fila">Fila ({unclassified.data?.length ?? 0})</TabsTrigger>
         </TabsList>
 
@@ -247,39 +252,19 @@ function AdminPage() {
         </TabsContent>
 
         <TabsContent value="saldos" className="mt-4">
-          <Card className="bg-card border-border">
-            <CardHeader><CardTitle className="text-base">Saldos iniciais cadastrados</CardTitle></CardHeader>
-            <CardContent>
-              {initialBalances.isLoading ? (
-                <Skeleton className="h-32" />
-              ) : (initialBalances.data ?? []).length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  Nenhum saldo inicial cadastrado. Sem este dado a Projeção do Balanço fica incompleta.
-                </p>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
-                      <th className="py-2.5">Conta</th>
-                      <th className="py-2.5">Tipo</th>
-                      <th className="py-2.5">Data referência</th>
-                      <th className="py-2.5 text-right">Valor</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(initialBalances.data ?? []).map((b) => (
-                      <tr key={b.id} className="border-b border-border/60">
-                        <td className="py-2">{b.account_label ?? "—"}</td>
-                        <td className="py-2 text-xs text-muted-foreground">{b.balance_type}</td>
-                        <td className="py-2 text-xs">{b.reference_date}</td>
-                        <td className="py-2 text-right tabular-nums font-medium">{BRL(Number(b.amount))}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </CardContent>
-          </Card>
+          <InitialBalancesTab companyId={cid} />
+        </TabsContent>
+
+        <TabsContent value="orcamento" className="mt-4">
+          <BudgetTab companyId={cid} />
+        </TabsContent>
+
+        <TabsContent value="ajustes" className="mt-4">
+          <ManualEntriesTab companyId={cid} />
+        </TabsContent>
+
+        <TabsContent value="parametros" className="mt-4">
+          <ParametersTab companyId={cid} />
         </TabsContent>
 
         <TabsContent value="fila" className="mt-4">

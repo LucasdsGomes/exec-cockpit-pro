@@ -53,6 +53,7 @@ import {
 } from "@/lib/queries/series";
 import { downloadCsv } from "@/lib/export-csv";
 import { toast } from "sonner";
+import { downloadPdfReport } from "@/lib/export-pdf";
 
 export const Route = createFileRoute("/_app/")({
   head: () => ({
@@ -103,6 +104,33 @@ function HomePage() {
     toast.success("CSV exportado");
   };
 
+  const exportPdf = () => {
+    if (!kpis) return;
+    const rows = [
+      { indicador: "Receita Líquida", valor: BRL(kpis.receitaLiquida) },
+      { indicador: "EBITDA", valor: BRL(kpis.ebitda) },
+      { indicador: "Margem EBITDA", valor: `${kpis.margemEbitda.toFixed(1)}%` },
+      { indicador: "Resultado Líquido", valor: BRL(kpis.resultadoLiquido) },
+      { indicador: "Saldo de Caixa", valor: BRL(kpis.saldoCaixa) },
+      { indicador: "A Pagar 7d", valor: BRL(kpis.contasPagar7d) },
+      { indicador: "A Receber 7d", valor: BRL(kpis.contasReceber7d) },
+      { indicador: "PMR (dias)", valor: kpis.pmr.toFixed(0) },
+      { indicador: "PMP (dias)", valor: kpis.pmp.toFixed(0) },
+      { indicador: "Ciclo Financeiro (dias)", valor: kpis.cicloFinanceiro.toFixed(0) },
+    ];
+    downloadPdfReport({
+      title: "Cockpit Executivo",
+      subtitle: `${company?.name ?? ""} · ${kpis.range.label}`,
+      filename: `home_kpis_${kpis.range.start}_${kpis.range.end}`,
+      rows,
+      columns: [
+        { key: "indicador", label: "Indicador" },
+        { key: "valor", label: "Valor", align: "right" },
+      ],
+    });
+    toast.success("PDF exportado");
+  };
+
   const loading = loadingCo || loadingKpis || !kpis;
 
   return (
@@ -121,7 +149,7 @@ function HomePage() {
             >
               <span className="size-1.5 rounded-full bg-success" /> Lovable Cloud
             </Badge>
-            <Button variant="outline" size="sm" className="h-9 gap-2" onClick={() => toast.info("Geração de PDF em breve") }>
+            <Button variant="outline" size="sm" className="h-9 gap-2" onClick={exportPdf}>
               <Download className="size-3.5" />
               PDF
             </Button>

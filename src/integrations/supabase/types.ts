@@ -2561,6 +2561,10 @@ export type Database = {
         Args: { _entry_id: string }
         Returns: boolean
       }
+      compute_balance_projection: {
+        Args: { _company: string; _date: string }
+        Returns: string
+      }
       compute_financial_cycle: {
         Args: { _company: string; _period: string }
         Returns: {
@@ -2590,6 +2594,7 @@ export type Database = {
         Args: { _company: string; _only_unclassified?: boolean }
         Returns: number
       }
+      run_daily_pipeline_all: { Args: never; Returns: Json }
       run_full_pipeline: {
         Args: { _company: string; _date?: string }
         Returns: Json
