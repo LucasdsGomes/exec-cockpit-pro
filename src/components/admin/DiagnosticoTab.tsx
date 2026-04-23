@@ -2,8 +2,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Activity, CheckCircle2, AlertTriangle, Clock, Database, Loader2, Wrench } from "lucide-react";
-import { useSystemHealth, useCronJobs, useBackfillBalance, useMirrorApAr } from "@/lib/queries/health";
+import { Activity, CheckCircle2, AlertTriangle, Clock, Database, Loader2, Wrench, Link2 } from "lucide-react";
+import { useSystemHealth, useCronJobs, useBackfillBalance, useMirrorApAr, useBackfillRefs } from "@/lib/queries/health";
 import { toast } from "sonner";
 
 function fmt(d: string | null) {
@@ -30,6 +30,7 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
   const cron = useCronJobs();
   const backfill = useBackfillBalance(companyId);
   const mirror = useMirrorApAr(companyId);
+  const refs = useBackfillRefs(companyId);
 
   const handleBackfill = () => {
     toast.promise(backfill.mutateAsync(30), {
@@ -43,6 +44,15 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
     toast.promise(mirror.mutateAsync(), {
       loading: "Espelhando contas a pagar/receber...",
       success: "Espelhamento concluído",
+      error: (e) => `Erro: ${e.message}`,
+    });
+  };
+
+  const handleBackfillRefs = () => {
+    toast.promise(refs.mutateAsync(), {
+      loading: "Reprocessando vínculos (banco, fornecedor, cliente)...",
+      success: (r) =>
+        `Vínculos atualizados em ${r.reprocess.entries_updated} lançamentos · DRE ${r.propagate.dre_base ?? 0}, DFC ${r.propagate.dfc_forecast_base ?? 0}`,
       error: (e) => `Erro: ${e.message}`,
     });
   };
@@ -84,6 +94,10 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
             <Button onClick={handleMirror} disabled={mirror.isPending} variant="outline" className="w-full justify-start gap-2">
               {mirror.isPending ? <Loader2 className="size-4 animate-spin" /> : <Database className="size-4" />}
               Espelhar Contas a Pagar / Receber
+            </Button>
+            <Button onClick={handleBackfillRefs} disabled={refs.isPending} variant="outline" className="w-full justify-start gap-2">
+              {refs.isPending ? <Loader2 className="size-4 animate-spin" /> : <Link2 className="size-4" />}
+              Reprocessar vínculos OMIE (banco / cliente / fornecedor)
             </Button>
             <Button onClick={handleBackfill} disabled={backfill.isPending} variant="outline" className="w-full justify-start gap-2">
               {backfill.isPending ? <Loader2 className="size-4 animate-spin" /> : <Clock className="size-4" />}

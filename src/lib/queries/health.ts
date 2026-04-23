@@ -91,3 +91,23 @@ export function useMirrorApAr(companyId: string | null | undefined) {
     },
   });
 }
+
+export function useBackfillRefs(companyId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      if (!companyId) throw new Error("Empresa não selecionada");
+      const { data, error } = await supabase.rpc("backfill_company_refs", {
+        _company: companyId,
+      });
+      if (error) throw error;
+      return data as {
+        reprocess: { payloads_processed: number; entries_updated: number };
+        propagate: Record<string, number>;
+      };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries();
+    },
+  });
+}

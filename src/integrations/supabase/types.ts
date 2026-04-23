@@ -2556,6 +2556,7 @@ export type Database = {
       }
     }
     Functions: {
+      backfill_company_refs: { Args: { _company: string }; Returns: Json }
       can_edit_company: { Args: { _company_id: string }; Returns: boolean }
       classify_financial_entry: {
         Args: { _entry_id: string }
@@ -2605,10 +2606,12 @@ export type Database = {
         Args: { _company: string }
         Returns: number
       }
+      propagate_entry_refs: { Args: { _company: string }; Returns: Json }
       reclassify_company: {
         Args: { _company: string; _only_unclassified?: boolean }
         Returns: number
       }
+      reprocess_raw_payloads: { Args: { _company: string }; Returns: Json }
       run_daily_pipeline_all: { Args: never; Returns: Json }
       run_full_pipeline: {
         Args: { _company: string; _date?: string }
