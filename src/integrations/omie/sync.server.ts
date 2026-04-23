@@ -372,8 +372,10 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
   const end = opts.endDate ? new Date(opts.endDate) : today;
 
   const periodFilter = {
-    dDtEmisDe: fmt(start),
-    dDtEmisAte: fmt(end),
+    pagina: 1,
+    registros_por_pagina: 200,
+    filtrar_por_emissao_de: fmt(start),
+    filtrar_por_emissao_ate: fmt(end),
   };
 
   const results: SyncRunResult["endpoints"] = [];
@@ -404,7 +406,9 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
         r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: periodFilter, upsert: (item, batchId) => upsertFinancialEntry(mapContaReceber(item, opts.companyId, batchId)) });
         break;
       case "movimentacoes_bancarias":
-        r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: { nPagina: 1, nRegPorPagina: 200, dDtInicial: fmt(start), dDtFinal: fmt(end) }, upsert: (item) => upsertBankMovement(item, opts.companyId) });
+        // ListarExtrato requires nCodCC per call (one bank account at a time, no pagination).
+        // Skipped for now — financial entries from contas_pagar/receber drive cash flow.
+        r = { key, batchId: "skipped", inserted: 0, updated: 0, errors: 0, durationMs: 0 };
         break;
     }
     results.push(r);
