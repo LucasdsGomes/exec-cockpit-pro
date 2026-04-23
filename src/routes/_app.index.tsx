@@ -44,6 +44,8 @@ import { BRL } from "@/lib/format";
 import { useCompany } from "@/lib/queries/company";
 import { useKpis } from "@/lib/queries/kpis";
 import { useFilters } from "@/lib/filters-context";
+import { useInitialBalances } from "@/lib/queries/admin";
+import { Link } from "@tanstack/react-router";
 import {
   useTrend12m,
   useCashDaily,
@@ -76,6 +78,8 @@ function HomePage() {
   const companyId = company?.id;
   const filters = useFilters();
   const { data: kpis, isLoading: loadingKpis } = useKpis(period, companyId, filters);
+  const { data: initialBalances = [] } = useInitialBalances(companyId);
+  const noBalances = initialBalances.length === 0;
   const { data: tendencia12m = [] } = useTrend12m(companyId);
   const { data: caixaDiario = [] } = useCashDaily(companyId, period, filters);
   const { data: proximosPagar = [] } = useUpcomingPayables(companyId, 14);
@@ -137,6 +141,18 @@ function HomePage() {
 
   return (
     <div className="space-y-6">
+      {noBalances && companyId && (
+        <Card className="border-warning/40 bg-warning/5">
+          <CardContent className="py-3 flex items-center justify-between gap-4">
+            <div className="text-sm">
+              <strong>Saldo de caixa zerado.</strong> Cadastre o saldo de abertura de cada conta bancária para o KPI refletir o caixa real.
+            </div>
+            <Link to="/admin">
+              <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90">Cadastrar saldos</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
       {/* Heading */}
       <SectionHeader
         eyebrow="Cockpit Executivo"
