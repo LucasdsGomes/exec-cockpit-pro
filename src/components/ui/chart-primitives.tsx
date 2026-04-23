@@ -14,17 +14,14 @@ export const CHART_COLORS = {
 export const CHART_GRID = "oklch(0.32 0.012 285 / 35%)";
 export const CHART_AXIS_TICK = { fill: "oklch(0.70 0.010 285)", fontSize: 11 } as const;
 
-export function ChartTooltip({
-  active,
-  payload,
-  label,
-  formatter,
-}: {
-  active?: boolean;
-  payload?: Array<{ name?: string; value?: number; color?: string }>;
-  label?: string | number;
-  formatter?: (v: number) => string;
-}) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function ChartTooltip(props: any) {
+  const { active, payload, label, formatter } = props as {
+    active?: boolean;
+    payload?: Array<{ name?: string | number; value?: number | string; color?: string }>;
+    label?: string | number;
+    formatter?: (v: number) => string;
+  };
   if (!active || !payload?.length) return null;
   return (
     <div className="rounded-lg border border-border-strong bg-popover/95 backdrop-blur px-3 py-2 shadow-xl">
@@ -40,7 +37,7 @@ export function ChartTooltip({
             />
             <span className="text-muted-foreground">{p.name}</span>
             <span className="ml-auto font-medium tabular-nums text-foreground">
-              {formatter ? formatter(p.value ?? 0) : (p.value ?? 0).toLocaleString("pt-BR")}
+              {formatter ? formatter(Number(p.value ?? 0)) : Number(p.value ?? 0).toLocaleString("pt-BR")}
             </span>
           </div>
         ))}
