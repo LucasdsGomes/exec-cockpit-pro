@@ -86,15 +86,15 @@ function AdminPage() {
 
   return (
     <div className="space-y-5">
-      <header className="flex items-end justify-between gap-4 flex-wrap">
+      <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 md:gap-4">
         <div>
           <div className="text-[11px] uppercase tracking-[0.2em] text-primary font-medium">Configurações</div>
-          <h1 className="text-2xl font-semibold tracking-tight mt-1">Administração</h1>
+          <h1 className="text-xl md:text-2xl font-semibold tracking-tight mt-1">Administração</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {company?.name ?? "—"} · Integrações OMIE, DE-PARA gerencial e ajustes
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button variant="outline" onClick={handleReclassify} disabled={reclassify.isPending} className="gap-2">
             {reclassify.isPending ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
             Reprocessar
@@ -107,7 +107,7 @@ function AdminPage() {
       </header>
 
       <Tabs defaultValue="integracoes">
-        <TabsList className="bg-card border border-border">
+        <TabsList className="bg-card border border-border w-full justify-start overflow-x-auto tabs-scroll h-auto flex-nowrap">
           <TabsTrigger value="integracoes">Integrações</TabsTrigger>
           <TabsTrigger value="depara">DE-PARA ({mappings.data?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="saldos">Saldos iniciais</TabsTrigger>
@@ -214,7 +214,7 @@ function AdminPage() {
                 <Skeleton className="h-64" />
               ) : (
                 <div className="overflow-auto max-h-[600px]">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-sm min-w-[640px]">
                     <thead className="sticky top-0 bg-card">
                       <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
                         <th className="py-2.5">Código</th>
@@ -297,7 +297,8 @@ function AdminPage() {
               ) : (unclassified.data ?? []).length === 0 ? (
                 <p className="text-sm text-muted-foreground">Sem lançamentos pendentes 🎉</p>
               ) : (
-                <table className="w-full text-sm">
+                <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[600px]">
                   <thead>
                     <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
                       <th className="py-2.5">Data</th>
@@ -321,6 +322,7 @@ function AdminPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
             </CardContent>
           </Card>

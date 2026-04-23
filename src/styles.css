@@ -227,6 +227,19 @@
 
   .anim-fade-in { animation: fadeIn var(--motion-base) var(--ease-out) both; }
   .anim-rise { animation: rise 280ms var(--ease-out) both; }
+
+  /* Mobile-friendly numeric hero (KPI value) */
+  .num-hero { font-size: clamp(1.375rem, 5vw, 2rem); line-height: 1.1; }
+  .text-mobile-meta { font-size: 11px; line-height: 1.3; }
+
+  /* Horizontal scrollable tabs (mobile) */
+  .tabs-scroll { scrollbar-width: none; -ms-overflow-style: none; }
+  .tabs-scroll::-webkit-scrollbar { display: none; }
+
+  /* Avoid iOS auto-zoom on focused inputs */
+  @media (max-width: 767px) {
+    input, select, textarea { font-size: 16px; }
+  }
 }
 
 @keyframes fadeIn {

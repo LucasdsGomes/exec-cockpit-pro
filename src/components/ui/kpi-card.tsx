@@ -30,9 +30,14 @@ export function KpiCard({
   const positive = (delta ?? 0) >= 0;
   const goodDirection = invertDelta ? !positive : positive;
 
-  const padding = size === "lg" ? "p-6" : size === "sm" ? "p-4" : "p-5";
+  const padding =
+    size === "lg" ? "p-5 sm:p-6" : size === "sm" ? "p-3 sm:p-4" : "p-4 sm:p-5";
   const valueSize =
-    size === "lg" ? "text-[28px] leading-[1.1]" : size === "sm" ? "text-xl" : "text-2xl";
+    size === "lg"
+      ? "text-2xl sm:text-[28px] leading-[1.1]"
+      : size === "sm"
+        ? "text-lg sm:text-xl"
+        : "text-xl sm:text-2xl";
 
   return (
     <button
@@ -77,7 +82,12 @@ export function KpiCard({
 
       {/* Hint + delta */}
       <div className="mt-2 flex items-center justify-between gap-2 min-h-[18px]">
-        <span className="text-[11px] text-muted-foreground truncate">{hint}</span>
+        <span
+          className="text-[11px] text-muted-foreground truncate"
+          title={hint}
+        >
+          {hint}
+        </span>
         {hasDelta && (
           <span
             className={cn(
