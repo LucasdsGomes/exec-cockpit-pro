@@ -1,96 +1,79 @@
 
 
-# Por que Margem Bruta, EBITDA e Lucro Líquido aparecem zerados
+# Revisão do estado atual e pendências
 
-## Diagnóstico
+## O que já está pronto (validado contra o banco)
 
-O `dre_base` armazena **categorias analíticas** vindas das regras automáticas (ex.: `Receita Líquida`, `Custos Diretos`, `Despesas Administrativas`, `Despesas com Pessoal`, `Despesas Financeiras`, `Despesas Tributárias`, `Outras Receitas`, `Outras Saídas`, `Deduções de Receita`). Não existem — e nunca existirão — linhas com `dre_group = 'Margem Bruta'`, `'EBITDA'`, `'Margem Bruta'` ou `'Lucro Líquido'`, porque esses são **subtotais calculados**, não categorias de lançamento.
+| Item | Status | Evidência |
+|---|---|---|
+| Home / DRE / DFC / Ciclo / Balanço lendo dados reais | ✅ | 537 linhas no `dre_base`, queries refatoradas |
+| Subtotais DRE (Margem Bruta, EBITDA, Lucro Líquido) | ✅ | `dre-subtotals.ts` + `snapshot_kpis` corrigido |
+| Trigger de auto-classificação | ✅ | `tg_classify_entry` ativo em `financial_entries` |
+| Pipeline diário (snapshot + balanço) | ✅ | Snapshot e balanço de 2026-04-23 presentes |
+| Admin completo | ✅ | Abas Integrações, DE-PARA, Saldos, Orçamento, Ajustes, Parâmetros, Fila |
+| Exportação PDF/CSV | ✅ | `export-pdf.ts` e `export-csv.ts` |
 
-Mas:
-- `useKpis` faz `sumDre(group='EBITDA')` e `sumDre(group='Lucro Líquido')` → sempre 0.
-- `useDreLines` percorre uma lista `ORDER` que tem `'CMV'`, `'Margem Bruta'`, `'EBITDA'`, `'Lucro Líquido'` e tenta lê-los do `dre_base` → sempre 0.
-- `snapshot_kpis` faz o mesmo SELECT direto, por isso `dashboard_kpi_snapshots` também tem ebitda = 0 e resultado_liquido = 0.
+## Pendências reais identificadas
 
-Margem Bruta % aparece 0 porque `Margem Bruta = 0 / Receita Líquida = 0%`.
+### 1. Dados ainda zerados nas tabelas operacionais
+- `receivable_entries` e `payable_entries` = **0 linhas** → Home mostra "Próximos a receber/pagar" vazio, e o Ciclo Financeiro calcula PMR/PMP zerados.
+- `bank_movements` = 0 → DFC realizada continua vazia.
+- `dfc_realized_base` = 0 → Fluxo de Caixa cai no fallback "previsão".
+- `initial_balances` = 0 → Balanço só mostra resultado acumulado, sem ativos/passivos.
 
-Os dados existem (R$ 3,5M de receita líquida, R$ 1,58M de custos diretos, R$ 248k de despesas administrativas, etc.) — falta apenas **calcular os subtotais** a partir das categorias analíticas.
+**Causa:** o sync OMIE atual popula `financial_entries` (543), mas não está espelhando para `payable_entries`/`receivable_entries` nem chamando `ListarExtrato` para movimentos bancários.
 
-## O que vou corrigir agora
+### 2. Lacunas funcionais menores
+- `alert_rules` = 0 → bloco de alertas na Home sempre vazio (falta seed de regras padrão).
+- 6 lançamentos ainda sem classificação (DE-PARA faltante para 6 categorias OMIE).
+- Botão "Reprocessar fila" no Admin existe, mas não há indicador de quais 6 categorias precisam mapeamento manual.
 
-### 1. Centralizar o cálculo de subtotais DRE
+### 3. UX / polimento
+- Home: estados vazios das listas AP/AR não orientam o usuário a sincronizar.
+- Admin → Integrações: não mostra um "próxima execução do cron" nem permite forçar `compute_balance_projection` por data passada (backfill).
+- Falta uma tela/aba simples de **diagnóstico** consolidando: última sync, contagens por tabela, regras inativas, categorias sem mapeamento.
 
-Criar `src/lib/dre-subtotals.ts` com a estrutura padrão brasileira:
+## Plano de fechamento (ordem sugerida)
 
-```text
-Receita Bruta       = Receita Líquida + |Deduções de Receita|
-(-) Deduções        = Deduções de Receita
-Receita Líquida     = soma das categorias "Receita Líquida" e "Outras Receitas (operacionais)"
-(-) CMV/Custos      = Custos Diretos
-Margem Bruta        = Receita Líquida + Custos Diretos
-(-) Despesas Op.    = Despesas Administrativas + Despesas com Pessoal + Despesas Operacionais + Despesas Tributárias + Outras Saídas
-EBITDA              = Margem Bruta + Despesas Operacionais
-(-) Result. Fin.    = Despesas Financeiras
-Lucro Líquido       = EBITDA + Resultado Financeiro
-```
+### Etapa A — Espelhar AP/AR a partir de `financial_entries` (destrava Home + Ciclo)
+1. Migration: função `mirror_payables_receivables(_company)` que para cada `financial_entries` com `direction='saida'`/`'entrada'` e `due_date IS NOT NULL` faz upsert em `payable_entries`/`receivable_entries` (chave `source_record_id` + `company_id`).
+2. Trigger `AFTER INSERT OR UPDATE ON financial_entries` chamando essa função para a linha nova.
+3. Backfill único: rodar `mirror_payables_receivables` para cada empresa ativa.
+4. Incluir a função no `run_daily_pipeline_all` para garantir consistência.
 
-Função única `computeDreSubtotals(map: Map<group, valor>)` que retorna o objeto com todos os totais e subtotais, usada por:
-- `useKpis` (EBITDA, Lucro Líquido, Margem EBITDA).
-- `useDreLines` (linhas + sparkline 12m).
-- `useDreWaterfall` (steps).
+### Etapa B — Seed de regras de alerta padrão
+Migration que insere em `alert_rules` por empresa ativa (idempotente):
+- `caixa_minimo` < R$ 50.000 (severity warning)
+- `entradas_nao_classificadas` > 0 (info)
+- `contas_vencendo_7d` > 0 (warning)
+- `ciclo_financeiro` > 60 dias (info)
 
-### 2. Reescrever `useDreLines`
+Hook `useAlerts` já existe → só passa a retornar resultados.
 
-- Aggregar **uma vez** por mês durante 12m (uma só query).
-- Para cada mês aplicar `computeDreSubtotals` e montar a sparkline correta dos subtotais.
-- Para o período corrente: aplicar a fórmula → todas as linhas (analíticas + subtotais) recebem valor real, % receita e variação.
+### Etapa C — Aba "Diagnóstico" no Admin
+Nova aba lendo via RPC `system_health(company)` que retorna JSON com:
+- contagens por tabela (financial/AP/AR/dre/dfc/balance)
+- última sync OMIE, último snapshot, último balance projection
+- categorias OMIE sem mapeamento (lista clicável → preenche linha do DE-PARA)
+- regras inativas
 
-### 3. Reescrever `useKpis`
+### Etapa D — Backfill de balanço e ações no Admin
+- Botão "Recalcular balanço (últimos 30 dias)" em Integrações dispara loop de `compute_balance_projection` por dia.
+- Mostrar `cron.job` ativos (via RPC `list_cron_jobs` security definer restrita a admin) com próximas execuções.
 
-- Remover `sumDre('EBITDA')` e `sumDre('Lucro Líquido')`.
-- Trazer os 9 grupos analíticos numa única query (corrente + período anterior) e derivar EBITDA/Lucro/Margem via `computeDreSubtotals`.
-- Manter snapshot só como fallback de saldo de caixa.
+### Etapa E (opcional) — Sync de extratos bancários OMIE
+- Endpoint `ListarExtrato` por `bank_account` populando `bank_movements` e `dfc_realized_base`. Remove o aviso "mostrando previsão" no Fluxo de Caixa. Já estava marcado como fora de escopo no plano original; manter assim a menos que você priorize.
 
-### 4. Atualizar a função SQL `snapshot_kpis`
+## Detalhes técnicos
 
-Migration que substitui os SELECTs diretos de `'EBITDA'` e `'Lucro Líquido'` pela mesma fórmula (CTE somando os grupos analíticos). Depois rodar `snapshot_kpis(company, today)` para popular o histórico correto.
+- Todas migrations usam `CREATE OR REPLACE` e `ON CONFLICT DO UPDATE` para serem reentrantes.
+- `mirror_payables_receivables` faz match por `(company_id, source_record_id)` e atualiza `paid_amount`/`received_amount` quando `cash_date IS NOT NULL` para refletir status `realizado`.
+- Seed de `alert_rules` usa `ON CONFLICT (company_id, metric) DO NOTHING` (adicionar índice único se faltar).
+- Aba Diagnóstico é client-side: 1 query agregada via novo arquivo `src/lib/queries/health.ts`, reaproveitando hooks existentes onde possível.
+- Backfill de balanço roda no cliente (loop de 30 dias chamando RPC) com `toast.promise` mostrando progresso.
 
-### 5. Detalhes técnicos finais
-- Sparkline 12m: agregar por `date_trunc('month', competence_date)` direto na query, evitar 12 chamadas.
-- `useDreWaterfall` usa os subtotais reais (Receita líquida → Custos → Margem bruta → Desp. Op. → EBITDA → Result. Fin. → Lucro líquido).
-- Tratar grupos ainda sem dado (PME/estoque, balanço sem `initial_balances`) com nota explicativa já existente.
+## Fora de escopo (mantido como antes)
 
----
-
-# O que ainda falta para concluir o app
-
-Depois desse fix, sobram 5 frentes (todas previstas no plano original):
-
-### A. Pipeline diário automatizado (migration)
-- Criar trigger `AFTER INSERT OR UPDATE ON financial_entries` chamando `classify_financial_entry(NEW.id)` → novos lançamentos OMIE classificam sozinhos.
-- Cron `pg_cron` 06:10 UTC chamando `run_full_pipeline(company)` para todas as empresas ativas → snapshots e métricas atualizadas todo dia.
-
-### B. Saldos iniciais e projeção de balanço
-- Tela `/admin?tab=saldos`: form para `initial_balances` (uma linha por conta bancária + capital social, lucros acumulados).
-- Função SQL `compute_balance_projection(company, date)` populando `balance_projection_daily` (saldo bancário + AR + AP + initial_balances).
-- Cron diário rodando essa função.
-
-### C. Admin — abas faltantes
-- **Orçamento**: upload CSV → `budget_entries` (destrava tabs Orçado/Comparativo do DRE).
-- **Ajustes manuais**: CRUD `manual_entries` com campo "motivo".
-- **Parâmetros**: form para `manual_parameters` (ex.: `inventory_value` para destravar PME real).
-
-### D. Exportações reais
-- PDF na Home e DRE via `jspdf` + `jspdf-autotable` (CSV já funciona em todas as telas).
-
-### E. Sincronização de extratos bancários OMIE (fora do escopo imediato)
-- Endpoint `ListarExtrato` por conta para popular `dfc_realized_base` real e remover o aviso "mostrando previsão" no Fluxo de Caixa.
-
-## Ordem sugerida
-
-1. **Agora**: itens 1–4 desta mensagem (corrige os zeros visíveis em DRE/Home/Snapshots).
-2. Trigger de auto-classificação + cron diário (A).
-3. Saldos iniciais + balanço (B).
-4. Demais abas do Admin (C).
-5. PDF exports (D).
-6. Extratos OMIE quando priorizar (E).
+- Sync de extratos OMIE (Etapa E) — apenas se priorizado.
+- Cenários múltiplos de orçamento, drill-down por centro de custo, integração de estoque real (PME via inventário automatizado).
 
