@@ -44,7 +44,7 @@ function FluxoCaixa() {
 
   const exportCsv = () => {
     if (!caixaDiario.length) return;
-    downloadCsv(caixaDiario, `fluxo_caixa_${period}`, [
+    downloadCsv(caixaDiario.map((d) => ({ ...d })) as unknown as Record<string, unknown>[], `fluxo_caixa_${period}`, [
       { key: "dia", label: "Dia" },
       { key: "entrada", label: "Entrada" },
       { key: "saida", label: "Saída" },
