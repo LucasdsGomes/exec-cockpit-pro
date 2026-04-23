@@ -23,6 +23,7 @@ import { ManualEntriesTab } from "@/components/admin/ManualEntriesTab";
 import { ParametersTab } from "@/components/admin/ParametersTab";
 import { BudgetTab } from "@/components/admin/BudgetTab";
 import { DiagnosticoTab } from "@/components/admin/DiagnosticoTab";
+import { CostCenterRulesTab } from "@/components/admin/CostCenterRulesTab";
 
 export const Route = createFileRoute("/_app/admin")({
   head: () => ({
@@ -109,6 +110,7 @@ function AdminPage() {
           <TabsTrigger value="integracoes">Integrações</TabsTrigger>
           <TabsTrigger value="depara">DE-PARA ({mappings.data?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="saldos">Saldos iniciais</TabsTrigger>
+          <TabsTrigger value="ccrules">Centro de Custo</TabsTrigger>
           <TabsTrigger value="orcamento">Orçamento</TabsTrigger>
           <TabsTrigger value="ajustes">Ajustes</TabsTrigger>
           <TabsTrigger value="parametros">Parâmetros</TabsTrigger>
@@ -255,6 +257,10 @@ function AdminPage() {
 
         <TabsContent value="saldos" className="mt-4">
           <InitialBalancesTab companyId={cid} />
+        </TabsContent>
+
+        <TabsContent value="ccrules" className="mt-4">
+          <CostCenterRulesTab companyId={cid} />
         </TabsContent>
 
         <TabsContent value="orcamento" className="mt-4">
