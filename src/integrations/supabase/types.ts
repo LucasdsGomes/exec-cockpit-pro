@@ -755,6 +755,60 @@ export type Database = {
         }
         Relationships: []
       }
+      cost_center_assign_rules: {
+        Row: {
+          active: boolean
+          company_id: string
+          cost_center_id: string
+          created_at: string
+          id: string
+          match_pattern: string
+          match_type: string
+          priority: number
+          rule_name: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          company_id: string
+          cost_center_id: string
+          created_at?: string
+          id?: string
+          match_pattern: string
+          match_type: string
+          priority?: number
+          rule_name: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          company_id?: string
+          cost_center_id?: string
+          created_at?: string
+          id?: string
+          match_pattern?: string
+          match_type?: string
+          priority?: number
+          rule_name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cost_center_assign_rules_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cost_center_assign_rules_cost_center_id_fkey"
+            columns: ["cost_center_id"]
+            isOneToOne: false
+            referencedRelation: "cost_centers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cost_center_mapping: {
         Row: {
           active: boolean
@@ -2556,6 +2610,7 @@ export type Database = {
       }
     }
     Functions: {
+      apply_cost_center_rules: { Args: { _company: string }; Returns: Json }
       backfill_company_refs: { Args: { _company: string }; Returns: Json }
       can_edit_company: { Args: { _company_id: string }; Returns: boolean }
       classify_financial_entry: {
@@ -2611,6 +2666,7 @@ export type Database = {
         Args: { _company: string; _only_unclassified?: boolean }
         Returns: number
       }
+      reconcile_bank_movements: { Args: { _company: string }; Returns: Json }
       reprocess_raw_payloads: { Args: { _company: string }; Returns: Json }
       run_daily_pipeline_all: { Args: never; Returns: Json }
       run_full_pipeline: {
