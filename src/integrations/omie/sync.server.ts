@@ -135,6 +135,9 @@ function mapContaPagar(r: AnyRec, companyId: string, batchId: string) {
     customer_name: null as string | null,
     supplier_name: asString(cab["codigo_cliente_fornecedor"]),
     is_classified: false,
+    metadata: r as Record<string, unknown>,
+    _bank_src: asString(cab["id_conta_corrente"] ?? det["id_conta_corrente"]),
+    _party_src: asString(cab["codigo_cliente_fornecedor"]),
   };
 }
 
@@ -166,6 +169,9 @@ function mapContaReceber(r: AnyRec, companyId: string, batchId: string) {
     customer_name: asString(cab["codigo_cliente_fornecedor"]),
     supplier_name: null as string | null,
     is_classified: false,
+    metadata: r as Record<string, unknown>,
+    _bank_src: asString(cab["id_conta_corrente"] ?? det["id_conta_corrente"]),
+    _party_src: asString(cab["codigo_cliente_fornecedor"]),
   };
 }
 
