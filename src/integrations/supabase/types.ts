@@ -2617,11 +2617,28 @@ export type Database = {
         Args: { _company: string; _date?: string }
         Returns: Json
       }
+      seed_initial_balances_from_bank_accounts: {
+        Args: { _company: string; _reference_date?: string }
+        Returns: Json
+      }
       snapshot_kpis: {
         Args: { _company: string; _date: string }
         Returns: string
       }
       system_health: { Args: { _company: string }; Returns: Json }
+      upsert_bank_movement: {
+        Args: {
+          _amount: number
+          _bank_account: string
+          _company: string
+          _description: string
+          _direction: string
+          _document: string
+          _movement_date: string
+          _source_record_id: string
+        }
+        Returns: string
+      }
     }
     Enums: {
       app_role: "admin" | "finance" | "controller" | "viewer"
