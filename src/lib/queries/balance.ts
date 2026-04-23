@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import type { GlobalFilters } from "@/lib/filters-context";
 
 export interface BalanceItem {
   conta: string;
@@ -12,12 +13,21 @@ export interface BalanceData {
   hasInitialBalances: boolean;
 }
 
-export function useBalance(companyId: string | null | undefined) {
+export function useBalance(
+  companyId: string | null | undefined,
+  filters?: Partial<GlobalFilters>,
+) {
+  const ba = filters?.bankAccountId ?? null;
   return useQuery({
-    queryKey: ["balance", companyId],
+    queryKey: ["balance", companyId, ba],
     enabled: !!companyId,
     queryFn: async (): Promise<BalanceData> => {
       const today = new Date().toISOString().slice(0, 10);
+      const ibQ = supabase
+        .from("initial_balances")
+        .select("amount, balance_type, account_label, bank_account_id")
+        .eq("company_id", companyId!);
+      if (ba) ibQ.eq("bank_account_id", ba);
       const [snapRes, ibRes, arRes, apRes] = await Promise.all([
         supabase
           .from("balance_projection_daily")
@@ -27,10 +37,7 @@ export function useBalance(companyId: string | null | undefined) {
           .order("projection_date", { ascending: false })
           .limit(1)
           .maybeSingle(),
-        supabase
-          .from("initial_balances")
-          .select("amount, balance_type, account_label")
-          .eq("company_id", companyId!),
+        ibQ,
         supabase
           .from("receivable_entries")
           .select("amount, received_amount")
@@ -55,7 +62,8 @@ export function useBalance(companyId: string | null | undefined) {
       const ap = (apRes.data ?? []).reduce((s, r) => s + (Number(r.amount ?? 0) - Number(r.paid_amount ?? 0)), 0);
 
       const snap = snapRes.data as Record<string, number | null> | null;
-      if (snap) {
+      // When a specific bank is selected, prefer rebuilding from initial_balances + AR/AP rather than the consolidated snapshot
+      if (snap && !ba) {
         return {
           ativo: {
             circulante: [

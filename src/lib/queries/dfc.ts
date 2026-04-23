@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { periodToRange, shortDateBR } from "@/lib/period";
+import type { GlobalFilters } from "@/lib/filters-context";
 
 export interface DfcBlock {
   tipo: string;
@@ -16,30 +17,46 @@ export interface DfcSummary {
   isForecast: boolean;
 }
 
-export function useDfcSummary(companyId: string | null | undefined, period: string) {
+export function useDfcSummary(
+  companyId: string | null | undefined,
+  period: string,
+  filters?: Partial<GlobalFilters>,
+) {
+  const ba = filters?.bankAccountId ?? null;
+  const mode = filters?.viewMode ?? "consolidado";
   return useQuery({
-    queryKey: ["dfcSummary", companyId, period],
+    queryKey: ["dfcSummary", companyId, period, ba, mode],
     enabled: !!companyId,
     queryFn: async (): Promise<DfcSummary> => {
       const range = periodToRange(period);
+      const realQ = supabase
+        .from("dfc_realized_base")
+        .select("dfc_group, flow_type, amount_signed")
+        .eq("company_id", companyId!)
+        .gte("cash_date", range.start)
+        .lte("cash_date", range.end);
+      const fcQ = supabase
+        .from("dfc_forecast_base")
+        .select("dfc_group, flow_type, amount_signed")
+        .eq("company_id", companyId!)
+        .gte("forecast_date", range.start)
+        .lte("forecast_date", range.end);
+      if (ba) {
+        realQ.eq("bank_account_id", ba);
+        fcQ.eq("bank_account_id", ba);
+      }
       const [realRes, fcRes, accountsRes] = await Promise.all([
-        supabase
-          .from("dfc_realized_base")
-          .select("dfc_group, flow_type, amount_signed")
-          .eq("company_id", companyId!)
-          .gte("cash_date", range.start)
-          .lte("cash_date", range.end),
-        supabase
-          .from("dfc_forecast_base")
-          .select("dfc_group, flow_type, amount_signed")
-          .eq("company_id", companyId!)
-          .gte("forecast_date", range.start)
-          .lte("forecast_date", range.end),
+        mode === "previsto"
+          ? Promise.resolve({ data: [] as { dfc_group: string | null; flow_type: string | null; amount_signed: number | null }[] })
+          : realQ,
+        mode === "realizado"
+          ? Promise.resolve({ data: [] as { dfc_group: string | null; flow_type: string | null; amount_signed: number | null }[] })
+          : fcQ,
         supabase.from("bank_accounts").select("id").eq("company_id", companyId!).eq("active", true),
       ]);
 
       const realRows = realRes.data ?? [];
-      const isForecast = realRows.length === 0;
+      const isForecast = mode === "previsto" || (mode !== "realizado" && realRows.length === 0);
       const rows = (isForecast ? (fcRes.data ?? []) : realRows) as {
         dfc_group: string | null;
         flow_type: string | null;

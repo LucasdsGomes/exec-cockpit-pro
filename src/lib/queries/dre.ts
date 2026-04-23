@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { periodToRange, previousRange, type DateRange } from "@/lib/period";
 import { computeDreSubtotals, dreValueOf, type DreLineKey } from "@/lib/dre-subtotals";
+import type { GlobalFilters } from "@/lib/filters-context";
 
 export interface DRELine {
   conta: string;
@@ -29,13 +30,20 @@ const ORDER: { key: DreLineKey; label: string; destaque?: DRELine["destaque"] }[
   { key: "Lucro Líquido", label: "Lucro Líquido", destaque: "total" },
 ];
 
-async function aggregate(companyId: string, range: DateRange) {
-  const { data } = await supabase
+async function aggregate(
+  companyId: string,
+  range: DateRange,
+  filters?: Pick<GlobalFilters, "costCenterId" | "businessUnit">,
+) {
+  let q = supabase
     .from("dre_base")
     .select("dre_group, amount_signed, competence_date")
     .eq("company_id", companyId)
     .gte("competence_date", range.start)
     .lte("competence_date", range.end);
+  if (filters?.costCenterId) q = q.eq("cost_center_id", filters.costCenterId);
+  if (filters?.businessUnit) q = q.eq("business_unit", filters.businessUnit);
+  const { data } = await q;
   const totals = new Map<string, number>();
   for (const r of data ?? []) {
     const k = String(r.dre_group);
@@ -76,16 +84,22 @@ async function spark12m(companyId: string): Promise<Map<DreLineKey, number[]>> {
   return result;
 }
 
-export function useDreLines(companyId: string | null | undefined, period: string) {
+export function useDreLines(
+  companyId: string | null | undefined,
+  period: string,
+  filters?: Partial<GlobalFilters>,
+) {
+  const cc = filters?.costCenterId ?? null;
+  const bu = filters?.businessUnit ?? null;
   return useQuery({
-    queryKey: ["dreLines", companyId, period],
+    queryKey: ["dreLines", companyId, period, cc, bu],
     enabled: !!companyId,
     queryFn: async (): Promise<DRELine[]> => {
       const range = periodToRange(period);
       const prev = previousRange(range);
       const [curr, prv, sparks] = await Promise.all([
-        aggregate(companyId!, range),
-        aggregate(companyId!, prev),
+        aggregate(companyId!, range, { costCenterId: cc, businessUnit: bu }),
+        aggregate(companyId!, prev, { costCenterId: cc, businessUnit: bu }),
         spark12m(companyId!),
       ]);
       const currSub = computeDreSubtotals(curr);
@@ -119,13 +133,19 @@ export interface WaterfallStep {
   type: "total" | "subtotal" | "neg" | "pos";
 }
 
-export function useDreWaterfall(companyId: string | null | undefined, period: string) {
+export function useDreWaterfall(
+  companyId: string | null | undefined,
+  period: string,
+  filters?: Partial<GlobalFilters>,
+) {
+  const cc = filters?.costCenterId ?? null;
+  const bu = filters?.businessUnit ?? null;
   return useQuery({
-    queryKey: ["dreWaterfall", companyId, period],
+    queryKey: ["dreWaterfall", companyId, period, cc, bu],
     enabled: !!companyId,
     queryFn: async (): Promise<WaterfallStep[]> => {
       const range = periodToRange(period);
-      const totals = await aggregate(companyId!, range);
+      const totals = await aggregate(companyId!, range, { costCenterId: cc, businessUnit: bu });
       const sub = computeDreSubtotals(totals);
       const steps: WaterfallStep[] = [
         { name: "Receita líquida", value: sub.receitaLiquida + sub.outrasReceitas, type: "total" },
