@@ -219,7 +219,7 @@ function HomePage() {
                 <Tooltip
                   cursor={{ stroke: CHART_GRID }}
                   content={(p) => (
-                    <ChartTooltip {...p} formatter={(v) => BRL(v, { compact: true })} />
+                    <ChartTooltip {...p} formatter={(v: number) => BRL(v, { compact: true })} />
                   )}
                 />
                 <Area
@@ -282,7 +282,7 @@ function HomePage() {
                 <Tooltip
                   cursor={{ fill: "oklch(0.32 0.012 285 / 30%)" }}
                   content={(p) => (
-                    <ChartTooltip {...p} formatter={(v) => BRL(v, { compact: true })} />
+                    <ChartTooltip {...p} formatter={(v: number) => BRL(v, { compact: true })} />
                   )}
                 />
                 <Legend wrapperStyle={chartLegendStyle} iconType="circle" iconSize={6} />
@@ -343,7 +343,7 @@ function HomePage() {
                 <Tooltip
                   cursor={{ fill: "oklch(0.32 0.012 285 / 25%)" }}
                   content={(p) => (
-                    <ChartTooltip {...p} formatter={(v) => BRL(v, { compact: true })} />
+                    <ChartTooltip {...p} formatter={(v: number) => BRL(v, { compact: true })} />
                   )}
                 />
                 <Bar
