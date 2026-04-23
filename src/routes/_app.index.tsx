@@ -549,6 +549,33 @@ function PaymentList({
   rows: { nome: string; venc: string; valor: number; status: string }[];
   negative?: boolean;
 }) {
+  return _PaymentListBody({ title, rows, negative });
+}
+
+function ChecklistItem({ done, label }: { done: boolean; label: string }) {
+  return (
+    <li className="flex items-center gap-2">
+      <span
+        className={`size-4 rounded-full grid place-items-center text-[10px] font-bold ${
+          done ? "bg-success/20 text-success" : "bg-muted text-muted-foreground"
+        }`}
+      >
+        {done ? "✓" : "○"}
+      </span>
+      <span className={done ? "text-muted-foreground line-through" : ""}>{label}</span>
+    </li>
+  );
+}
+
+function _PaymentListBody({
+  title,
+  rows,
+  negative,
+}: {
+  title: string;
+  rows: { nome: string; venc: string; valor: number; status: string }[];
+  negative?: boolean;
+}) {
   const total = rows.reduce((a, b) => a + b.valor, 0);
   return (
     <Card className="surface-card border-0">
