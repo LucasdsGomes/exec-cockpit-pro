@@ -204,7 +204,7 @@ export function useUploadBudget(companyId: string | null | undefined) {
   });
 }
 
-export type BudgetScenario = "orcado" | "revisado" | "tendencia";
+export type BudgetScenario = "orcado" | "reprojetado" | "realizado";
 
 export interface BudgetEntryRow {
   id: string;
