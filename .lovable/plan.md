@@ -1,110 +1,68 @@
 
 
-# Refino mobile da aplicação (sem mexer em lógica)
+# Login mobile + restrição de domínios + recuperação de senha
 
 ## Diagnóstico
 
-Hoje o app é desktop-first:
-- **Sidebar fixa de 240px** sempre visível — em mobile ocupa 70% da tela.
-- **Header** com busca de 320px + botões — quebra abaixo de 768px.
-- **Barra de filtros globais** com 4 selects + presets de período em linha — força scroll horizontal.
-- **KPIs em 6 colunas** (`xl:grid-cols-6`) — em telas pequenas funcionam parcialmente, mas o `text-3xl` do número fica apertado.
-- **Gráficos** com altura fixa `h-72` e legendas ao lado do título — legenda colide com o título no mobile.
-- **Tabelas** (DRE, Fluxo, Drilldown, Admin) usam `<Table>` puro — geram scroll horizontal em telas <600px.
-- **Modal de drilldown DRE** com tabela de 5 colunas — ilegível no mobile.
-- **Admin** com 7 abas em linha + formulários com `grid-cols-12` — quebra mal.
-
-Nenhuma query, mutation, cálculo ou rota muda. Só camada visual.
+1. **Mobile login quebrado**: o input `type="password"` em iOS/Android com fonte <16px dispara zoom automático que pode travar o submit em alguns navegadores. Além disso, o `Tabs` (Entrar/Criar conta) usa fonte pequena e área de toque reduzida. Sem `autoComplete`/`inputMode`, o autofill atrapalha. O botão Google em `<lg` ocupa largura cheia mas o card `max-w-md` em telas estreitas tem padding excessivo.
+2. **Recuperação de senha**: a rota `/reset-password` já existe e está linkada, mas o template de email padrão da Lovable manda o link sem branding e o redirect não é validado em mobile (hash `type=recovery` pode vir como `?` em alguns provedores). Falta ainda configurar o Cloud para enviar o email.
+3. **Restrição de domínios**: hoje qualquer email pode se cadastrar. Precisa bloquear no client (UX) **e** no servidor (segurança real) — apenas `@hitech-e.com.br` e `@milen-ia.com`.
 
 ## Mudanças
 
-### 1. Shell (`AppShell.tsx`) — navegação mobile
+### 1. Validação de domínio de email (cliente + servidor)
 
-- **Sidebar**: em `<lg` vira **drawer** (Sheet `side="left"`) acionado por botão "menu" (`Menu` icon) no header. Em `≥lg` continua fixa como hoje.
-- **Header mobile**: esconde a busca larga (vira ícone que expande), reduz para `h-14`, mantém avatar + sino.
-- **Bottom navigation** em `<md`: barra fixa inferior com os 5 itens principais (Home, DRE, Fluxo, Ciclo, Admin) usando ícones + label minúsculo. Sidebar drawer fica como acesso secundário/completo.
-- **Filtros globais**: em `<lg` viram botão **"Filtros (N)"** que abre Sheet `side="bottom"` com os 4 selects empilhados + período + botão "Aplicar/Limpar". Badge de contagem de lançamentos vai dentro do Sheet.
-- Padding do `<main>` reduz para `px-4 py-4` em mobile, mantém `p-6` em desktop.
+- **Client (`src/routes/auth.tsx`)**: criar helper `ALLOWED_DOMAINS = ["hitech-e.com.br", "milen-ia.com"]` e função `isAllowedEmail(email)`. Aplicar em:
+  - `handleSignUp` — bloqueia antes da chamada com toast claro.
+  - `handleSignIn` — bloqueia antes (evita lockout/tentativas com email errado).
+  - `handleGoogle` — após retorno bem-sucedido, verificar `session.user.email`; se não for permitido, fazer `signOut` imediato e mostrar toast.
+  - Hint visual abaixo do campo email no signup: *"Apenas emails @hitech-e.com.br e @milen-ia.com"*.
+- **Server (banco)**: trigger `BEFORE INSERT` em `auth.users` que rejeita emails fora dos domínios permitidos. Como `auth` é schema reservado, a forma correta é criar uma função `public.validate_email_domain()` chamada via trigger `BEFORE INSERT OR UPDATE OF email ON auth.users`. Lança `EXCEPTION` com mensagem em português. Isso garante que mesmo se alguém burlar o client, o backend rejeita.
+- **Bonus**: mesmo trigger valida que o email do OAuth Google bate com o domínio. Sem bypass possível.
 
-### 2. KPIs (`kpi-card.tsx` + grids nas páginas)
+### 2. Refino mobile da tela `/auth`
 
-- Grids passam para `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6` (era `grid-cols-2 md:grid-cols-3 xl:grid-cols-6`) — empilhamento real em <640px só quando o card é grande; cards "size=sm" mantêm 2 colunas para densidade.
-- `KpiCard`: número principal aumenta no mobile (`text-2xl sm:text-3xl`), hint vira `text-[11px]` truncado em uma linha com `title` (tooltip nativo). Delta e ícone permanecem.
+- Reduzir padding do card em mobile (`p-4 sm:p-6`).
+- Aumentar todos os inputs para `h-11 text-base` em mobile (16px = sem zoom iOS), `sm:h-10 sm:text-sm` em desktop.
+- Adicionar `autoComplete="email"`, `autoComplete="current-password"` / `"new-password"`, `inputMode="email"`, `autoCapitalize="none"`, `spellCheck={false}` nos inputs.
+- Tabs Entrar/Criar conta com `h-10` e `text-sm` (área de toque maior).
+- Botão Google com `h-11` em mobile.
+- Toaster com `position="top-center"` (melhor em mobile, aparece em cima do teclado).
+- `min-h-svh` em vez de `min-h-screen` (corrige altura quando barra do navegador móvel aparece/some).
+- Garantir scroll funcional: container externo com `overflow-y-auto` para casos de teclado virtual aberto em telas pequenas.
 
-### 3. Tabelas → listas em mobile
+### 3. Recuperação de senha
 
-Padrão reutilizável: criar componente `<ResponsiveTable>` (wrapper) ou aplicar direto nas tabelas críticas:
+- **Página `/reset-password` (já existe)**: aprimorar detecção do modo `update` aceitando tanto `#type=recovery` quanto `?type=recovery` (fallback via `searchParams`) e validando se há sessão ativa de recovery. Aplicar mesmas melhorias mobile (h-11, autoComplete="new-password").
+- Adicionar feedback claro: *"Link enviado para seu email. Verifique também a caixa de spam."*
+- Validar que o email digitado para recuperação também está nos domínios permitidos (mensagem amigável: *"Email não autorizado neste sistema."*).
+- **Cloud → Emails**: configurar templates de email customizados (signup confirmation, password recovery) com branding Hitech. Requer:
+  1. Configuração de domínio de email (subdomínio delegado).
+  2. Scaffold dos auth email templates (gera função edge + 6 templates React Email com cores Hitech).
+- **Importante**: o setup de email exige um domínio próprio. Vou abrir o diálogo para o usuário configurar no momento da execução.
 
-- **DRE** (`_app.dre.tsx`): em `<md`, troca `<Table>` por lista vertical onde cada linha é card compacto com label à esquerda, valor à direita, indentação por nível. Subtotais em destaque. Tap continua abrindo `DreLineDrilldown`.
-- **DreLineDrilldown** (modal): em `<md`, vira `Sheet side="bottom"` com altura 90vh; tabela de lançamentos colapsa para lista de cards (data + descrição em cima, valor em destaque embaixo, badge da categoria).
-- **Fluxo de Caixa** — tabela de projeção dia-a-dia: em mobile vira accordion por semana, exibindo só saldo final da semana; expandir mostra os dias.
-- **Admin → tabelas** (saldos iniciais, regras CC, lançamentos sem CC, orçamento): em `<md` viram lista de cards com 2-3 campos visíveis e botão "Ver detalhes" expandindo o restante.
+### 4. Auto-confirm de email
 
-### 4. Gráficos (Recharts)
-
-- Container: altura responsiva `h-56 sm:h-64 lg:h-72` (mais baixa em mobile para caber sem scroll).
-- Margens: `margin={{ left: 0, right: 8 }}` em mobile, com `YAxis width={36}` e `tickFormatter` mais curto (`1.2M` em vez de `R$ 1.234.567`).
-- Legendas: em `<sm` vão **abaixo** do gráfico (não ao lado do título). Implementação: legenda vira `flex-wrap gap-2` no `CardHeader` e quebra naturalmente.
-- `XAxis interval`: aumenta o `interval` em mobile (mostrar 1 em cada 5 ticks) via `useIsMobile`.
-- Tooltip: já existe `ChartTooltip`; garantir `wrapperStyle={{ zIndex: 50 }}` e tap-friendly.
-
-### 5. Período / `PeriodPresets`
-
-- Em mobile, vira `Select` com as opções (em vez de pílulas em linha). Em desktop continua como pílulas.
-
-### 6. Admin (`_app.admin.tsx`)
-
-- `<TabsList>`: ativa `overflow-x-auto` com `scroll-snap-x` — abas roláveis horizontalmente sem quebrar layout (UX comum em mobile, melhor que dropdown para 7 itens).
-- Formulários internos: trocar `grid-cols-12 / md:grid-cols-6` por `grid-cols-1 sm:grid-cols-2`. Inputs com `h-10` e fonte 16px (evita zoom no iOS).
-
-### 7. Tipografia e tokens
-
-Adicionar em `styles.css`:
-```css
-@layer utilities {
-  .num-hero { font-size: clamp(1.5rem, 5vw, 2rem); }
-  .text-mobile-meta { font-size: 11px; line-height: 1.3; }
-}
-```
-- Body já tem font-smoothing — manter.
-- `SectionHeader`: ações quebram em segunda linha em `<md` (`flex-wrap` + `gap-2`).
-
-### 8. Touch targets
-
-- Botões `size="sm"` pequenos demais para tap: aplicar `min-h-9 min-w-9` em ícones-only no mobile via `sm:min-h-8 sm:min-w-8` (mantém densidade desktop).
-- Espaçamento entre cards: `gap-3 sm:gap-4` (já consistente, validar nos arquivos).
+- Hoje o signup pede confirmação por email. Como o cadastro já é restrito a 2 domínios corporativos, faz sentido **manter a confirmação** por segurança (evita typos), mas com email branded da Hitech (item 3 acima).
 
 ## Arquivos editados
 
-- `src/components/layout/AppShell.tsx` — drawer + bottom nav + filtros em sheet.
-- `src/components/ui/kpi-card.tsx` — tipografia responsiva.
-- `src/components/ui/section-header.tsx` — wrap das ações.
-- `src/components/ui/period-presets.tsx` — variant select em mobile.
-- `src/components/ui/chart-primitives.tsx` — helpers para legenda mobile.
-- `src/routes/_app.index.tsx` — grids + alturas de gráficos.
-- `src/routes/_app.dre.tsx` — tabela → lista mobile.
-- `src/routes/_app.fluxo-de-caixa.tsx` — tabela diária → accordion semanal mobile.
-- `src/routes/_app.ciclo-financeiro.tsx` — grids.
-- `src/routes/_app.projecao-balanco.tsx` — grids + bloco de balanço empilhado.
-- `src/routes/_app.admin.tsx` — tabs roláveis.
-- `src/components/admin/*.tsx` (todos os 7) — tabelas → cards em `<md`, formulários em coluna única.
-- `src/components/dre/DreLineDrilldown.tsx` — Dialog → Sheet bottom em mobile + lista de cards.
-- `src/styles.css` — utilities `num-hero` e `text-mobile-meta`.
+- `src/routes/auth.tsx` — validação de domínio + refino mobile + autoComplete/inputMode.
+- `src/routes/reset-password.tsx` — refino mobile + validação de domínio + detecção robusta de recovery.
+- **Migração SQL** — função `public.validate_email_domain()` + trigger em `auth.users`.
+- **Cloud → Emails** — setup de domínio + scaffold de templates auth (branded Hitech).
 
 ## Detalhes técnicos
 
-- Hook `useIsMobile()` (já existe em `src/hooks/use-mobile.tsx`, breakpoint 768) é usado para alternar render de tabela vs lista, modal vs sheet, legenda lateral vs inferior.
-- Drawer da sidebar usa `Sheet` (já instalado, `src/components/ui/sheet.tsx`).
-- Bottom nav: novo subcomponente dentro de `AppShell.tsx` — `<nav className="fixed bottom-0 left-0 right-0 z-40 grid grid-cols-5 border-t bg-background md:hidden">`. Adicionar `pb-16 md:pb-0` no `<main>` para não cobrir conteúdo.
-- Tabelas grandes que não dá para reescrever inteiras (ex.: `BudgetTab` complexa) recebem fallback `overflow-x-auto` em wrapper + `min-w-[640px]` na tabela — preserva layout desktop e permite scroll horizontal local somente naquela tabela, sem afetar a página.
-- Sem alteração de schema, queries, mutations, RLS, edge functions ou rotas.
-- Desktop (≥`lg`, 1024px+): zero mudança visual perceptível — todos os ajustes são em breakpoints `<md` e `<lg`.
+- Trigger usa `SECURITY DEFINER` e `SET search_path = public`. Lança `RAISE EXCEPTION 'Email domain not allowed. Only @hitech-e.com.br and @milen-ia.com are permitted.'` que aparece no `error.message` do client.
+- A validação client é UX-only; a do banco é a fonte de verdade.
+- Sem mexer em RLS nem em outras tabelas.
+- Para o setup de email branded, será necessário você informar (no diálogo que vai abrir) qual domínio quer usar como remetente — sugestão: `notify.hitech-e.com.br`. Isso requer que você adicione 2 registros NS no provedor do domínio `hitech-e.com.br`.
 
 ## Fora de escopo
 
-- PWA / instalação no home screen.
-- Gestos custom (swipe entre abas, pull-to-refresh).
-- Dark/light toggle (já é dark fixo).
-- Refatoração visual desktop.
-- Otimização de bundle / lazy load de rotas.
+- Magic link / passwordless.
+- 2FA / MFA.
+- Rate limiting custom (Supabase já tem padrão).
+- Apple/Microsoft OAuth.
 
