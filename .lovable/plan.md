@@ -1,72 +1,66 @@
 
 
-# Diagnóstico do problema "filtros não batem com a integração"
+# Destravar o Saldo de Caixa
 
-Os filtros globais agora **funcionam mecanicamente**, mas selecioná-los **zera os números** porque os dados-base não têm a chave que o filtro exige:
+## Por que está zerado
 
-| Tabela | `cost_center_id` | `bank_account_id` | `business_unit` |
-|---|---|---|---|
-| `financial_entries` (543) | 0 | 0 | — |
-| `dre_base` (537) | 0 | — | 0 |
-| `dfc_forecast_base` (537) | — | 0 | — |
-| `dfc_realized_base` | 0 linhas no total | — | — |
-| `initial_balances` | — | 0 linhas no total | — |
+A fórmula do caixa é `saldos iniciais + movimentações realizadas`. Hoje as duas fontes estão vazias:
 
-**Causa raiz:** o sync OMIE (`src/integrations/omie/sync.server.ts`) só extrai `codigo_categoria` dos títulos. Ignora `codigo_projeto` (centro de custo / unidade), `codigo_conta_corrente` (banco) e os códigos de cliente/fornecedor. As funções `classify_financial_entry` e `mirror_payables_receivables` então propagam `NULL` adiante. Resultado: qualquer filtro de Unidade/Conta/CC zera tudo.
+| Fonte | Linhas | Status |
+|---|---|---|
+| `initial_balances` (saldos de abertura por conta) | 0 | Nunca cadastrado |
+| `dfc_realized_base` (pagamentos liquidados) | 0 | OMIE só envia títulos "previstos" |
+| `bank_movements` (extrato bancário) | 0 | Sync de extrato não implementado |
+| `financial_entries.cash_date` preenchido | 0 | OMIE Contas a Pagar/Receber não trazem data de quitação no payload atual |
 
-# O que falta — em ordem de impacto
+O resultado: a base 100% para o caixa não existe.
 
-## 1. Enriquecer ingestão OMIE (resolve o problema dos filtros)
+## Frente 1 — Saldo inicial obrigatório (resolve hoje)
 
-**`mapContaPagar` / `mapContaReceber`** passam a capturar do payload bruto:
-- `cab.codigo_projeto` → resolver para `cost_centers.id` por `source_record_id`.
-- `det.codigo_conta_corrente` (ou `nCodCC`) → resolver para `bank_accounts.id`.
-- `cab.codigo_cliente_fornecedor` → resolver para `suppliers.id` (pagar) ou `customers.id` (receber).
-- Persistir o payload completo em `metadata` (hoje vem `{}`) para reprocessamento futuro.
+Cobre o cenário "quero ver o caixa atual mesmo sem extrato OMIE".
 
-**`mapMovimento`** já tem `bank_account_id`; alimentar via `nCodCC` do extrato.
+1. **Wizard de saldo inicial** no Admin → Saldos Iniciais:
+   - Detecta se `initial_balances` está vazio.
+   - Lista todas as `bank_accounts` ativas (já temos 14) e pré-popula uma linha por conta com `balance_type = 'caixa_banco'` e `reference_date = hoje` zerada.
+   - Usuário só preenche o valor de cada conta e salva em batch.
+2. **Alerta global no topo da Home/Balanço** quando saldo inicial estiver vazio: `"Cadastre os saldos iniciais para ver o caixa real"` → link direto para o wizard.
+3. **Recalcular balanço automaticamente** após salvar saldos: chama `compute_balance_projection` para a data atual.
 
-Adicionar helper `resolveLocalRefs(record, companyId)` que faz upsert/lookup nas tabelas mapeadoras (`cost_center_mapping`, `chart_of_accounts_mapping`) e devolve os UUIDs.
+Resultado imediato: o KPI "Saldo de Caixa" passa a refletir o valor cadastrado.
 
-## 2. Backfill em SQL (sem reimportar do OMIE)
+## Frente 2 — Sync de extratos OMIE (caixa real, automatizado)
 
-Migration que:
-1. Para cada `financial_entries` existente, lê `metadata` (após reprocessamento do raw — ver passo 3) e popula as FKs faltantes.
-2. Atualiza `dre_base`, `dfc_forecast_base`, `dfc_realized_base`, `payable_entries`, `receivable_entries` com base no `source_entry_id` / `financial_entry_id` correspondente — evita rerodar a classificação.
-3. Atualiza `dre_base.business_unit` e `dre_base.department` via `cost_centers.business_unit/department`.
+Cobre o cenário "quero o caixa atualizado todo dia sem digitar nada" (Etapa E que estava pendente).
 
-## 3. Reprocessar `omie_raw_payloads` para preencher `metadata`
+1. Adicionar endpoint `financas/extrato → ListarExtrato` em `src/integrations/omie/endpoints.ts`.
+2. Implementar `syncBankStatements(companyId)` em `sync.server.ts`:
+   - Loop por cada `bank_account` ativa.
+   - Chama `ListarExtrato` por `nCodCC` para o período (default últimos 90 dias, configurável).
+   - Mapeia cada linha em `bank_movements` via o `mapMovimento` que já existe.
+3. O trigger `bank_movements_mirror` (já criado) se encarrega de propagar para `dfc_realized_base` automaticamente.
+4. Adicionar a chamada em `run_daily_pipeline_all` para rodar todo dia.
+5. Botão **"Sincronizar Extratos"** em Admin → Integrações para disparo manual.
 
-Função SQL `reprocess_raw_payloads(company)` que percorre `omie_raw_payloads` (que tem o JSON bruto completo), faz match com `financial_entries` por `source_record_id` e atualiza `metadata` com o objeto original. Roda 1x e fica disponível como botão no Admin → Diagnóstico.
+Resultado: cada movimentação real do banco entra em `dfc_realized_base.amount_signed`, e o caixa passa a se atualizar sozinho. Também desbloqueia o filtro "Realizado" do Fluxo de Caixa.
 
-## 4. Sync de extratos bancários (Etapa E pendente)
+## Frente 3 — Aproveitar `data_pagamento` que já vem da OMIE
 
-Implementar `ListarExtrato` por `bank_account` em `sync.server.ts`:
-- novo endpoint em `OMIE_ENDPOINTS`: `financas/extrato → ListarExtrato`.
-- popular `bank_movements` (já existe `mapMovimento`).
-- trigger `mirror_bank_movement_to_dfc_realized` para alimentar `dfc_realized_base`.
-- desbloquia o modo "Realizado" no Fluxo de Caixa.
-
-## 5. Saldo inicial obrigatório no onboarding
-
-- Alerta no topo do Balanço quando `initial_balances` está vazio: "Cadastre os saldos iniciais para ver o balanço completo" → link para Admin → Saldos.
-- Pré-popular saldos iniciais zerados (1 linha por `bank_account` ativa) na primeira abertura da aba, para o usuário só preencher os valores.
-
-## 6. Pequenos ajustes de UX nos filtros
-
-- Se um filtro retorna 0 dados, mostrar aviso "Nenhum lançamento desta unidade/conta no período" em vez de KPIs zerados sem contexto.
-- Botão "Limpar filtros" no top bar (já existe `reset()` no contexto, falta o botão visível).
-- Indicador na badge do filtro: "Conta: BB · 2.341 lançamentos" para o usuário saber que casou.
+Curto-circuito enquanto extrato não está implementado: alguns títulos OMIE já trazem `data_pagamento` no detalhe (campo `det.data_pagamento` que o mapper hoje lê mas pode estar vindo `null`). Verificar nos `omie_raw_payloads` quantos têm `data_pagamento` real e, se houver, o `reprocess_raw_payloads` precisa ser estendido para também propagar `cash_date`. Isso enriquece `dfc_realized_base` sem precisar de extrato.
 
 ## Detalhes técnicos
 
-- Arquivos editados: `src/integrations/omie/sync.server.ts` (mappers + resolvers), nova migration de backfill + função `reprocess_raw_payloads`, novo endpoint `financas/extrato` em `endpoints.ts`, atualização de `classify_financial_entry` para propagar as novas FKs, `AppShell.tsx` (botão limpar + contagem), `_app.projecao-balanco.tsx` (aviso de saldo inicial).
-- A reclassificação em massa pode ser feita via `run_full_pipeline(company)` após o backfill — sem necessidade de novo sync OMIE.
-- Etapa 4 (extratos) pode ficar em segundo passo; etapas 1, 2, 3, 5, 6 resolvem o sintoma reportado.
+- Arquivos: `src/components/admin/InitialBalancesTab.tsx` (wizard de pré-população), `src/routes/_app.index.tsx` + `_app.projecao-balanco.tsx` (alerta), `src/integrations/omie/sync.server.ts` (sync de extrato), `src/integrations/omie/endpoints.ts` (endpoint), nova migration estendendo `reprocess_raw_payloads` para também atualizar `cash_date` quando o payload tiver `data_pagamento`.
+- Após cadastro de saldo inicial, disparar `compute_balance_projection(company, hoje)` + `snapshot_kpis(company, hoje)` para o KPI da Home se atualizar.
+- A Frente 2 pode levar mais tempo (depende do payload do extrato OMIE retornar como esperado e de o usuário ter `nCodCC` configurado em todas as contas) — Frente 1 destrava o número hoje.
 
-## Fora deste escopo
+## Ordem sugerida
 
-- Drill-down por centro de custo dentro do DRE (cada linha clicável abrindo lançamentos) — pode ser próxima frente.
-- PME real via integração de estoque OMIE.
-- Cenários múltiplos de orçamento.
+1. **Frente 1 (wizard de saldo inicial)** — caixa volta a ser exibido em minutos depois do cadastro.
+2. **Frente 3 (data_pagamento do payload)** — ganho grátis de "realizado" sem nova integração.
+3. **Frente 2 (extrato OMIE)** — automação completa.
+
+## Fora de escopo
+
+- Conciliação bancária (matching extrato ↔ títulos).
+- Importação de OFX/CSV manual como fallback do extrato OMIE.
 
