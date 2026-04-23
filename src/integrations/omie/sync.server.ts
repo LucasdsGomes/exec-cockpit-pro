@@ -445,9 +445,12 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
         r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: periodFilter, upsert: (item, batchId) => upsertFinancialEntry(mapContaReceber(item, opts.companyId, batchId)) });
         break;
       case "movimentacoes_bancarias":
-        // ListarExtrato requires nCodCC per call (one bank account at a time, no pagination).
-        // Skipped for now — financial entries from contas_pagar/receber drive cash flow.
-        r = { key, batchId: "skipped", inserted: 0, updated: 0, errors: 0, durationMs: 0 };
+        r = await runBankStatementsSync({
+          companyId: opts.companyId,
+          triggeredBy,
+          startDate: opts.startDate,
+          endDate: opts.endDate,
+        });
         break;
     }
     results.push(r);
@@ -497,4 +500,116 @@ export async function pingOmie(): Promise<{ ok: boolean; message: string }> {
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : String(e) };
   }
+}
+
+// --- Bank statements sync (ListarExtrato per bank account) ---
+
+async function runBankStatementsSync(opts: {
+  companyId: string;
+  triggeredBy: string | null;
+  startDate?: string;
+  endDate?: string;
+}): Promise<SyncRunResult["endpoints"][number]> {
+  const def = OMIE_ENDPOINTS.movimentacoes_bancarias;
+  const start = Date.now();
+  const today = new Date();
+  const dStart = opts.startDate ? new Date(opts.startDate) : new Date(today.getTime() - 90 * 86_400_000);
+  const dEnd = opts.endDate ? new Date(opts.endDate) : today;
+  const fmt = (d: Date) => `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+
+  const batchId = await startBatch(opts.companyId, def.endpoint, opts.triggeredBy, {
+    call: def.call,
+    range: { from: fmt(dStart), to: fmt(dEnd) },
+  });
+  await logToDb(opts.companyId, batchId, "info", `Iniciando extrato bancário`, def.endpoint, {});
+
+  let inserted = 0, updated = 0, errors = 0, total = 0;
+  try {
+    const { data: accounts } = await supabaseAdmin
+      .from("bank_accounts")
+      .select("id, source_record_id, name")
+      .eq("company_id", opts.companyId)
+      .eq("active", true);
+    const list = (accounts ?? []).filter((a) => a.source_record_id);
+    if (list.length === 0) {
+      await logToDb(opts.companyId, batchId, "warn", "Nenhuma conta bancária com nCodCC configurado", def.endpoint, {});
+    }
+    for (const acc of list) {
+      const ncod = Number(acc.source_record_id);
+      if (!Number.isFinite(ncod)) continue;
+      try {
+        for await (const page of paginateOmie<AnyRec>({
+          endpoint: def.endpoint,
+          call: def.call,
+          param: {
+            nCodCC: ncod,
+            dDtInicial: fmt(dStart),
+            dDtFinal: fmt(dEnd),
+          },
+          pageKey: "nPagina",
+          pageSizeKey: "nRegPorPagina",
+          totalPagesKey: "nTotPaginas",
+          pageSize: 200,
+          maxPages: 50,
+        })) {
+          if (!page.ok) {
+            errors += 1;
+            await recordError(opts.companyId, batchId, def.endpoint, page.error, { acc: acc.id });
+            break;
+          }
+          await supabaseAdmin.from("omie_raw_payloads").insert({
+            company_id: opts.companyId,
+            batch_id: batchId,
+            source_endpoint: def.endpoint,
+            source_record_id: `acc:${acc.source_record_id}:page:${page.page}`,
+            payload: page.raw as never,
+          });
+          for (const item of page.items) {
+            total += 1;
+            try {
+              const r = await upsertBankMovementForAccount(item, opts.companyId, acc.id);
+              inserted += r.inserted;
+              updated += r.updated;
+              errors += r.errors;
+            } catch (e) {
+              errors += 1;
+              await recordError(opts.companyId, batchId, def.endpoint, e instanceof Error ? e.message : String(e), item);
+            }
+          }
+        }
+      } catch (e) {
+        errors += 1;
+        await recordError(opts.companyId, batchId, def.endpoint, e instanceof Error ? e.message : String(e), { acc: acc.id });
+      }
+    }
+    const status = errors === 0 ? "success" : (inserted + updated > 0 ? "partial" : "error");
+    await finishBatch(batchId, status, inserted + updated, errors, total);
+    await logToDb(opts.companyId, batchId, "info", `Extrato concluído`, def.endpoint, { inserted, updated, errors, total });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    await recordError(opts.companyId, batchId, def.endpoint, msg, null);
+    await finishBatch(batchId, "error", inserted + updated, errors + 1, total);
+    await logToDb(opts.companyId, batchId, "error", `Falha extrato: ${msg}`, def.endpoint, {});
+  }
+
+  return { key: "movimentacoes_bancarias", batchId, inserted, updated, errors, durationMs: Date.now() - start };
+}
+
+async function upsertBankMovementForAccount(item: AnyRec, companyId: string, bankAccountId: string) {
+  const rec = mapMovimento(item, companyId);
+  if (!rec.source_record_id) return { inserted: 0, updated: 0, errors: 0 };
+  const { data: existing } = await supabaseAdmin
+    .from("bank_movements").select("id")
+    .eq("company_id", companyId)
+    .eq("source_record_id", rec.source_record_id)
+    .maybeSingle();
+  const { bank_account_id: _omit, ...rest } = rec;
+  void _omit;
+  const payload = { ...rest, bank_account_id: bankAccountId, synced_at: new Date().toISOString() };
+  if (existing) {
+    const { error } = await supabaseAdmin.from("bank_movements").update(payload).eq("id", existing.id);
+    return { inserted: 0, updated: error ? 0 : 1, errors: error ? 1 : 0 };
+  }
+  const { error } = await supabaseAdmin.from("bank_movements").insert([payload]);
+  return { inserted: error ? 0 : 1, updated: 0, errors: error ? 1 : 0 };
 }
