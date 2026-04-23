@@ -23,7 +23,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { sync } from "@/lib/mock-data";
 import { useAuth } from "@/hooks/useAuth";
 import {
   DropdownMenu,
@@ -120,7 +119,7 @@ export function AppShell() {
             </span>
             <span className="font-medium">OMIE conectado</span>
           </div>
-          <div className="mt-1.5 text-[11px]">Última sync · {sync.ultima}</div>
+          <div className="mt-1.5 text-[11px]">Sincronização ativa</div>
         </div>
       </aside>
 
@@ -245,7 +244,7 @@ export function AppShell() {
             className="ml-auto border-primary/30 text-primary bg-primary/5 font-medium gap-1.5"
           >
             <span className="size-1.5 rounded-full bg-primary" />
-            {sync.fonte}
+            OMIE • API v2
           </Badge>
         </div>
 
