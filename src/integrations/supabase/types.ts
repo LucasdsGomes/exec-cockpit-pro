@@ -2590,6 +2590,21 @@ export type Database = {
         Returns: boolean
       }
       is_company_admin: { Args: { _company_id: string }; Returns: boolean }
+      list_cron_jobs: {
+        Args: never
+        Returns: {
+          active: boolean
+          command: string
+          jobname: string
+          last_run: string
+          last_status: string
+          schedule: string
+        }[]
+      }
+      mirror_payables_receivables: {
+        Args: { _company: string }
+        Returns: number
+      }
       reclassify_company: {
         Args: { _company: string; _only_unclassified?: boolean }
         Returns: number
@@ -2603,6 +2618,7 @@ export type Database = {
         Args: { _company: string; _date: string }
         Returns: string
       }
+      system_health: { Args: { _company: string }; Returns: Json }
     }
     Enums: {
       app_role: "admin" | "finance" | "controller" | "viewer"
