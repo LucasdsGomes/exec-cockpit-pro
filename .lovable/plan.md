@@ -1,66 +1,89 @@
 
 
-# O que falta — checkpoint
+# Fluxo de Caixa olhando para frente + pendências
 
-## Status
+## Confirmação do diagnóstico
 
-| Frente | Status |
-|---|---|
-| Filtros globais funcionais | ✅ |
-| Backfill OMIE (banco/cliente/fornecedor) | ✅ |
-| Wizard de saldo inicial | ✅ |
-| Sync de extratos OMIE + trigger DFC realizado | ✅ |
-| `cash_date` via `data_pagamento` | ✅ |
-| Regras de Centro de Custo (Admin) | ✅ |
-| Reconciliação extrato ↔ títulos | ✅ |
-| Botão manual de extratos + diário no `run_daily_pipeline_all` | ✅ |
-| Badge de contagem + botão limpar filtros | ✅ |
-| Checklist de onboarding na Home | ✅ |
+**Sim, confere.** Hoje o Fluxo de Caixa olha **só para trás**:
 
-## O que ainda falta — em ordem
+- `periodToRange("30d")` retorna `[hoje−29, hoje]` — janela passada.
+- A aba "DFC Prevista" usa exatamente os mesmos dados realizados, multiplicados por `1.04` (placeholder, não é projeção real).
+- O heatmap de vencimentos é a única parte forward-looking (próximos 28 dias), mas fica isolado.
+- KPIs ("Saldo final", "Entradas/Saídas") referem-se ao período passado, não ao caixa projetado de fato.
 
-### 1. Erro de runtime atual (bloqueador silencioso)
+Resultado: um diretor abre a tela esperando "vou ter caixa para os próximos 60 dias?" e vê "tive caixa nos últimos 30 dias".
 
-`Failed to fetch dynamically imported module: virtual:tanstack-start-client-entry` — aparece no console agora. Provável import quebrado após últimas refatorações (algum arquivo apagado/renomeado ainda referenciado). Investigar `AppShell.tsx`, `_app.index.tsx`, `DiagnosticoTab.tsx` e `CostCenterRulesTab.tsx` recém-tocados. Resolver antes de avançar — pode estar mascarando bugs.
+## Frente A — Reorientar Fluxo de Caixa para o futuro (prioridade desta rodada)
 
-### 2. Cron diário de fato agendado (pg_cron)
+### A.1. Presets de período com horizonte futuro
+Adicionar opções no `PeriodPresets` específicas de tesouraria:
+- **Próximos 7 dias**, **Próximos 30 dias**, **Próximos 60 dias**, **Próximos 90 dias** (default na página de Fluxo).
+- Estender `periodToRange` com casos `next7`, `next30`, `next60`, `next90` retornando `[hoje, hoje+N]`.
+- Manter os presets retrospectivos disponíveis para análise histórica.
+- Default da página `/fluxo-de-caixa`: **`next30`**.
 
-`run_daily_pipeline_all` foi atualizado, mas não há job `pg_cron` chamando-o todo dia às 6h. Sem isso, a automação só roda se alguém clicar manualmente. Criar:
-- Job `pg_cron` chamando `select run_daily_pipeline_all();` diariamente.
-- View "Última execução do pipeline" em Admin → Diagnóstico mostrando `cron.job_run_details` da última rodada.
+### A.2. Projeção real de saldo (substituir o `*1.04` placeholder)
+Construir série diária verdadeira em `useCashProjection(companyId, days)`:
+1. Saldo inicial = saldo atual de caixa (saldos iniciais + realizados até hoje).
+2. Para cada dia futuro D em `[hoje, hoje+N]`:
+   - Entradas previstas = `receivable_entries` com `due_date = D` e ainda não recebidos.
+   - Saídas previstas = `payable_entries` com `due_date = D` e ainda não pagos.
+   - (Opcional) recorrências fixas de `manual_entries` marcadas como recorrentes.
+3. Saldo do dia = saldo anterior + entradas − saídas.
+4. Marcar dias com saldo negativo ou abaixo do mínimo configurado.
 
-### 3. Status visível por conta bancária (extrato)
+### A.3. KPIs reescritos para perspectiva futura
+- **Saldo atual** (hoje) — substitui "Saldo inicial".
+- **Entradas previstas** (no horizonte selecionado).
+- **Saídas previstas** (no horizonte selecionado).
+- **Saldo projetado ao final** + delta vs. hoje.
+- Badge extra: **"Menor saldo no período: R$ X em DD/MM"** com cor de alerta se < mínimo configurável.
 
-Hoje o usuário não sabe se cada conta foi sincronizada. Adicionar em Admin → Saldos Iniciais (ou nova aba "Contas Bancárias") coluna "Último extrato em…" e botão por conta para resync individual.
+### A.4. Reorganizar as abas
+Trocar "DFC Realizada / DFC Prevista" por:
+- **Projeção** (default) — gráfico de área com saldo projetado, linha de saldo mínimo, marcadores de dias críticos.
+- **Calendário** — heatmap de 28 dias (já existe, expandir para 60).
+- **Histórico** — DFC realizada por natureza (operacional/investimento/financiamento), com janela retrospectiva selecionável.
 
-### 4. Drill-down DRE → lançamentos
+### A.5. Tabela DFC orientada ao futuro
+Na aba Projeção, mostrar tabela **DFC Prevista por natureza** agregando `dfc_forecast_base` por `flow_type` no horizonte futuro — não o realizado retrospectivo.
 
-Clicar em uma linha do DRE (ex.: "Despesas Operacionais — R$ 45k") abre modal listando os `financial_entries` que compõem aquele número, com filtros respeitando o período/unidade ativos. Aumenta confiança no número e ajuda auditoria.
+### A.6. Alerta de saldo mínimo
+Campo configurável em **Admin → Parâmetros**: "Saldo mínimo de caixa" (já tem `Parameters` mas precisa expor essa chave). Aparece como `ReferenceLine` no gráfico e dispara `InsightCard` quando a projeção cruza para baixo.
 
-### 5. Override manual de Centro de Custo em massa
+## Frente B — Pendências carry-over (continuação do roadmap)
 
-`ManualEntriesTab` permite criar lançamentos manuais, mas não editar CC de lançamentos OMIE existentes em lote. Adicionar tela "Lançamentos sem CC" com seleção múltipla e atribuição de CC — complementa as regras automáticas para casos pontuais.
+### B.1. Status visível por conta bancária (Frente 3 anterior)
+Em **Admin → Saldos Iniciais**, adicionar coluna "Último extrato em…" e botão de resync individual por `bank_account`.
 
-### 6. Cenários múltiplos de orçamento
+### B.2. Drill-down DRE → lançamentos (Frente 4 anterior)
+Modal listando os `financial_entries` que compõem cada linha do DRE, respeitando filtros ativos.
 
-Schema `budget_scenario` já suporta `orcado | revisado | tendencia`, mas a UI só lê `orcado`. Adicionar seletor de cenário em `BudgetTab` e nas comparações Realizado vs Orçado.
+### B.3. Override manual de Centro de Custo em massa (Frente 5 anterior)
+Tela "Lançamentos sem CC" com seleção múltipla e atribuição em batch.
 
-### 7. Importação OFX/CSV manual (fallback)
+### B.4. Cenários múltiplos de orçamento
+Seletor `orcado | revisado | tendencia` em `BudgetTab` e nas comparações.
 
-Quando OMIE não tem `nCodCC` configurado para uma conta, o `ListarExtrato` falha. Permitir upload de OFX/CSV em Admin → Saldos Iniciais como fallback popula `bank_movements` direto.
+### B.5. Importação OFX/CSV manual
+Fallback para contas sem `nCodCC` configurado na OMIE.
+
+## Detalhes técnicos
+
+- Arquivos: `src/lib/period.ts` (presets futuros), `src/components/ui/period-presets.tsx` (UI), `src/lib/queries/dfc.ts` (nova `useCashProjection`), `src/routes/_app.fluxo-de-caixa.tsx` (reorganização das abas e KPIs), `src/components/admin/ParametersTab.tsx` (saldo mínimo), `src/components/admin/InitialBalancesTab.tsx` (status de extrato).
+- Migration: nenhum schema novo necessário para A — `payable_entries`, `receivable_entries` e `dfc_forecast_base` já têm `due_date`/`forecast_date`. Para B.4 já existe enum `budget_scenario`.
+- Default do filtro de modo na página Fluxo: forçar **`previsto`** quando o horizonte for futuro.
 
 ## Ordem sugerida
 
-1. **Frente 1** — corrigir runtime error (essencial).
-2. **Frente 2** — agendar `pg_cron` diário (fecha o ciclo de automação).
-3. **Frente 3** — visibilidade do status de extrato por conta.
-4. **Frente 4** — drill-down do DRE (alto valor de UX).
-5. **Frente 5** — override manual de CC (complementa Frente 1 da rodada anterior).
-6. **Frentes 6 e 7** — incrementais.
+1. **A.1 + A.2 + A.3** — núcleo: presets futuros, projeção real, KPIs forward-looking.
+2. **A.4 + A.5** — abas e tabela reorganizadas.
+3. **A.6** — saldo mínimo configurável.
+4. **B.1 → B.5** — pendências do roadmap, na ordem indicada.
 
 ## Fora de escopo
 
-- Conciliação contábil completa (débito/crédito por plano de contas).
-- Multi-empresa com consolidação automática.
-- App mobile.
+- Simulação what-if (alterar premissas e ver impacto).
+- Cenários múltiplos de projeção (otimista/pessimista) lado a lado.
+- Forecast com ML/sazonalidade — só matemática determinística por enquanto.
 
