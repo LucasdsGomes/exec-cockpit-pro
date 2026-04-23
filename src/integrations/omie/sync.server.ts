@@ -406,7 +406,9 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
         r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: periodFilter, upsert: (item, batchId) => upsertFinancialEntry(mapContaReceber(item, opts.companyId, batchId)) });
         break;
       case "movimentacoes_bancarias":
-        r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: { nPagina: 1, nRegPorPagina: 200, dDtInicial: fmt(start), dDtFinal: fmt(end) }, upsert: (item) => upsertBankMovement(item, opts.companyId) });
+        // ListarExtrato requires nCodCC per call (one bank account at a time, no pagination).
+        // Skipped for now — financial entries from contas_pagar/receber drive cash flow.
+        r = { key, batchId: "skipped", inserted: 0, updated: 0, errors: 0, durationMs: 0 };
         break;
     }
     results.push(r);
