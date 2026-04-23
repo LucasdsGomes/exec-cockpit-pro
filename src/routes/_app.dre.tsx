@@ -3,7 +3,6 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { dre, type DRELinha, kpis } from "@/lib/mock-data";
 import { BRL, PCT } from "@/lib/format";
 import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, ReferenceLine,
@@ -13,6 +12,13 @@ import { cn } from "@/lib/utils";
 import { SectionHeader } from "@/components/ui/section-header";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { CHART_COLORS, CHART_GRID, CHART_AXIS_TICK, ChartTooltip } from "@/components/ui/chart-primitives";
+import { PeriodPresets } from "@/components/ui/period-presets";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useCompany } from "@/lib/queries/company";
+import { useKpis } from "@/lib/queries/kpis";
+import { useDreLines, useDreWaterfall, type DRELine } from "@/lib/queries/dre";
+import { downloadCsv } from "@/lib/export-csv";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/dre")({
   head: () => ({
@@ -25,50 +31,64 @@ export const Route = createFileRoute("/_app/dre")({
 });
 
 function DREPage() {
-  const [period, setPeriod] = useState<"Diário" | "Mensal" | "Acum. Mês" | "Acum. Ano">("Mensal");
+  const [period, setPeriod] = useState("mtd");
+  const { data: company } = useCompany();
+  const companyId = company?.id;
+  const { data: kpis } = useKpis(period, companyId);
+  const { data: dre = [], isLoading: loadingDre } = useDreLines(companyId, period);
+  const { data: waterfall = [] } = useDreWaterfall(companyId, period);
+
+  const exportCsv = () => {
+    if (!dre.length) return;
+    downloadCsv(
+      dre.map((d) => ({
+        conta: d.conta,
+        valor: d.valor,
+        pct_receita: d.pctReceita.toFixed(1),
+        var_abs: d.varAbs,
+        var_pct: d.varPct.toFixed(1),
+      })),
+      `dre_${kpis?.range.start ?? "periodo"}`,
+      [
+        { key: "conta", label: "Conta" },
+        { key: "valor", label: "Valor" },
+        { key: "pct_receita", label: "% Receita" },
+        { key: "var_abs", label: "Variação Absoluta" },
+        { key: "var_pct", label: "Variação %" },
+      ],
+    );
+    toast.success("CSV exportado");
+  };
 
   return (
     <div className="space-y-6 anim-fade-in">
       <SectionHeader
         eyebrow="Resultado"
         title="DRE Gerencial"
-        description="Demonstrativo de resultados consolidado · Abril/2026 · drill-down disponível por linha."
+        description={kpis ? `Demonstrativo · ${kpis.range.label}` : "Demonstrativo de resultados consolidado"}
         actions={
-          <Button variant="outline" size="sm" className="gap-1.5">
-            <Download className="size-3.5" /> Exportar
-          </Button>
+          <>
+            <PeriodPresets value={period} onChange={setPeriod} />
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={exportCsv}>
+              <Download className="size-3.5" /> Exportar
+            </Button>
+          </>
         }
       />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <KpiCard label="Receita líquida" value={BRL(kpis.receitaLiquida)} delta={kpis.receitaLiquidaVar} icon={TrendingUp} hint="vs mês anterior" />
-        <KpiCard label="Margem bruta" value={`${(60.4).toFixed(1)}%`} delta={1.4} icon={Percent} hint="3 meses estável" />
-        <KpiCard label="EBITDA" value={BRL(kpis.ebitda)} delta={kpis.ebitdaVar} icon={Activity} hint={`Margem ${kpis.margemEbitda}%`} accent />
-        <KpiCard label="Lucro líquido" value={BRL(kpis.resultadoLiquido)} delta={kpis.resultadoLiquidoVar} icon={Wallet} hint="15.4% da receita" />
+        <KpiCard label="Receita líquida" value={BRL(kpis?.receitaLiquida ?? 0)} delta={kpis?.receitaLiquidaVar ?? 0} icon={TrendingUp} hint="vs período anterior" />
+        <KpiCard label="Margem bruta" value={`${marginGross(dre).toFixed(1)}%`} icon={Percent} hint="Bruta / Receita líq." />
+        <KpiCard label="EBITDA" value={BRL(kpis?.ebitda ?? 0)} delta={kpis?.ebitdaVar ?? 0} icon={Activity} hint={`Margem ${(kpis?.margemEbitda ?? 0).toFixed(1)}%`} accent />
+        <KpiCard label="Lucro líquido" value={BRL(kpis?.resultadoLiquido ?? 0)} delta={kpis?.resultadoLiquidoVar ?? 0} icon={Wallet} />
       </div>
 
       <Tabs defaultValue="realizado">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <TabsList className="bg-card border border-border h-9">
-            <TabsTrigger value="realizado">Realizado</TabsTrigger>
-            <TabsTrigger value="orcado">Orçado</TabsTrigger>
-            <TabsTrigger value="comparativo">Orçado vs Realizado</TabsTrigger>
-          </TabsList>
-          <div className="inline-flex items-center rounded-lg border border-border bg-card/60 p-0.5">
-            {(["Diário", "Mensal", "Acum. Mês", "Acum. Ano"] as const).map((v) => (
-              <button
-                key={v}
-                onClick={() => setPeriod(v)}
-                className={cn(
-                  "h-7 px-2.5 text-xs font-medium rounded-md transition-colors",
-                  period === v ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
-        </div>
+        <TabsList className="bg-card border border-border h-9">
+          <TabsTrigger value="realizado">Realizado</TabsTrigger>
+          <TabsTrigger value="orcado">Orçado</TabsTrigger>
+          <TabsTrigger value="comparativo">Orçado vs Realizado</TabsTrigger>
+        </TabsList>
 
         <TabsContent value="realizado" className="mt-4 space-y-4">
           <Card className="bg-card border-border surface-card">
@@ -77,25 +97,27 @@ function DREPage() {
               <p className="text-xs text-muted-foreground">Da receita líquida ao lucro líquido</p>
             </CardHeader>
             <CardContent className="h-72 pt-2">
-              <DREWaterfall />
+              <DREWaterfall steps={waterfall} />
             </CardContent>
           </Card>
 
           <Card className="bg-card border-border surface-card">
             <CardHeader>
-              <CardTitle className="text-base">Demonstrativo do mês</CardTitle>
+              <CardTitle className="text-base">Demonstrativo · {kpis?.range.label ?? ""}</CardTitle>
             </CardHeader>
             <CardContent>
-              <DRETable data={dre} />
+              {loadingDre ? <Skeleton className="h-48" /> : dre.length === 0 ? (
+                <EmptyState message="Sem lançamentos classificados no período. Acesse Admin → DE-PARA para mapear categorias." />
+              ) : <DRETable data={dre} />}
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="orcado" className="mt-4">
           <Card className="bg-card border-border surface-card">
-            <CardHeader><CardTitle className="text-base">Orçado do mês</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">Orçado do período</CardTitle></CardHeader>
             <CardContent>
-              <DRETable data={dre.map(d => ({ ...d, valor: Math.round(d.valor * 0.93), varAbs: 0, varPct: 0 }))} />
+              <EmptyState message="Cadastre orçamento em Admin → Orçamento para habilitar esta visão." />
             </CardContent>
           </Card>
         </TabsContent>
@@ -106,41 +128,8 @@ function DREPage() {
               <CardTitle className="text-base">Orçado vs Realizado</CardTitle>
               <p className="text-xs text-muted-foreground">Variações relevantes destacadas</p>
             </CardHeader>
-            <CardContent className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-eyebrow border-b border-border">
-                    <th className="py-2.5 font-medium">Conta</th>
-                    <th className="py-2.5 text-right font-medium">Orçado</th>
-                    <th className="py-2.5 text-right font-medium">Realizado</th>
-                    <th className="py-2.5 text-right font-medium">Δ Abs</th>
-                    <th className="py-2.5 text-right font-medium">Δ %</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dre.map((d) => {
-                    const orc = Math.round(d.valor * 0.93);
-                    const delta = d.valor - orc;
-                    const pct = (delta / Math.max(1, Math.abs(orc))) * 100;
-                    const isTotal = d.destaque === "total";
-                    return (
-                      <tr
-                        key={d.conta}
-                        className={cn(
-                          "border-b border-border/50 hover:bg-muted/30 transition-colors",
-                          isTotal && "bg-primary/[0.04]",
-                        )}
-                      >
-                        <td className={cn("py-2.5", isTotal && "font-semibold")}>{d.conta}</td>
-                        <td className="py-2.5 text-right tabular-nums text-muted-foreground">{BRL(orc)}</td>
-                        <td className={cn("py-2.5 text-right tabular-nums font-medium", isTotal && "text-primary")}>{BRL(d.valor)}</td>
-                        <td className={cn("py-2.5 text-right tabular-nums", delta >= 0 ? "text-success" : "text-destructive")}>{BRL(delta)}</td>
-                        <td className={cn("py-2.5 text-right tabular-nums text-xs", pct >= 0 ? "text-success" : "text-destructive")}>{PCT(pct)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <CardContent>
+              <EmptyState message="Cadastre orçamento em Admin → Orçamento para habilitar comparativos." />
             </CardContent>
           </Card>
         </TabsContent>
@@ -149,7 +138,19 @@ function DREPage() {
   );
 }
 
-function DRETable({ data }: { data: DRELinha[] }) {
+function marginGross(dre: DRELine[]): number {
+  const r = dre.find((d) => d.conta.includes("Receita Líquida"))?.valor ?? 0;
+  const m = dre.find((d) => d.conta.includes("Margem Bruta"))?.valor ?? 0;
+  return r ? (m / r) * 100 : 0;
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="py-10 text-center text-sm text-muted-foreground">{message}</div>
+  );
+}
+
+function DRETable({ data }: { data: DRELine[] }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -208,18 +209,10 @@ function DRETable({ data }: { data: DRELinha[] }) {
   );
 }
 
-function DREWaterfall() {
-  const steps = [
-    { name: "Rec. líquida", value: 4_820_000, type: "total" as const },
-    { name: "CMV", value: -1_910_000, type: "neg" as const },
-    { name: "Margem bruta", value: 2_910_000, type: "subtotal" as const },
-    { name: "Desp. Op.", value: -1_730_000, type: "neg" as const },
-    { name: "EBITDA", value: 1_180_000, type: "total" as const },
-    { name: "Result. Fin.", value: -180_000, type: "neg" as const },
-    { name: "Não Op.", value: 25_000, type: "pos" as const },
-    { name: "Lucro líquido", value: 742_000, type: "total" as const },
-  ];
-
+function DREWaterfall({ steps }: { steps: { name: string; value: number; type: "total" | "subtotal" | "neg" | "pos" }[] }) {
+  if (!steps.length) {
+    return <div className="h-full grid place-items-center text-sm text-muted-foreground">Sem dados para o período.</div>;
+  }
   let running = 0;
   const data = steps.map((s) => {
     if (s.type === "total" || s.type === "subtotal") {
