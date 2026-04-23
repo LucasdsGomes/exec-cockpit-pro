@@ -257,24 +257,57 @@ type FinancialEntryInsert = ReturnType<typeof mapContaPagar> | ReturnType<typeof
 
 async function upsertFinancialEntry(record: FinancialEntryInsert): Promise<{ inserted: number; updated: number; errors: number }> {
   if (!record.source_record_id) return { inserted: 0, updated: 0, errors: 0 };
+
+  // Resolve foreign keys from raw OMIE codes
+  const { _bank_src, _party_src, metadata, ...base } = record;
+  let bank_account_id: string | null = null;
+  let supplier_id: string | null = null;
+  let customer_id: string | null = null;
+  if (_bank_src) {
+    const { data } = await supabaseAdmin
+      .from("bank_accounts").select("id")
+      .eq("company_id", base.company_id).eq("source_record_id", _bank_src).maybeSingle();
+    bank_account_id = data?.id ?? null;
+  }
+  if (_party_src) {
+    if (base.direction === "saida") {
+      const { data } = await supabaseAdmin
+        .from("suppliers").select("id")
+        .eq("company_id", base.company_id).eq("source_record_id", _party_src).maybeSingle();
+      supplier_id = data?.id ?? null;
+    } else {
+      const { data } = await supabaseAdmin
+        .from("customers").select("id")
+        .eq("company_id", base.company_id).eq("source_record_id", _party_src).maybeSingle();
+      customer_id = data?.id ?? null;
+    }
+  }
+  const enriched = {
+    ...base,
+    metadata: metadata as never,
+    bank_account_id,
+    supplier_id,
+    customer_id,
+  };
+
   const { data: existing } = await supabaseAdmin
     .from("financial_entries")
     .select("id")
-    .eq("company_id", record.company_id)
-    .eq("source_endpoint", record.source_endpoint)
-    .eq("source_record_id", record.source_record_id)
+    .eq("company_id", enriched.company_id)
+    .eq("source_endpoint", enriched.source_endpoint)
+    .eq("source_record_id", enriched.source_record_id!)
     .maybeSingle();
 
   if (existing) {
     const { error } = await supabaseAdmin
       .from("financial_entries")
-      .update({ ...record, synced_at: new Date().toISOString() })
+      .update({ ...enriched, synced_at: new Date().toISOString() })
       .eq("id", existing.id);
     return { inserted: 0, updated: error ? 0 : 1, errors: error ? 1 : 0 };
   }
   const { error } = await supabaseAdmin
     .from("financial_entries")
-    .insert([{ ...record, synced_at: new Date().toISOString() }]);
+    .insert([{ ...enriched, synced_at: new Date().toISOString() }]);
   return { inserted: error ? 0 : 1, updated: 0, errors: error ? 1 : 0 };
 }
 
