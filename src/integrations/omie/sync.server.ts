@@ -176,16 +176,19 @@ function mapContaReceber(r: AnyRec, companyId: string, batchId: string) {
 }
 
 function mapMovimento(r: AnyRec, companyId: string) {
-  const amount = asNumber(r["nValorMovimento"] ?? r["valor"] ?? 0);
-  const direction = amount >= 0 ? "entrada" : "saida";
+  // OMIE ListarExtrato returns: nCodTitulo, dDtMovimento, nValorMovimento, cTipoOperacao ('C'=credit, 'D'=debit), cDescricao
+  const amountRaw = asNumber(r["nValorMovimento"] ?? r["valor"] ?? 0);
+  const tipo = String(r["cTipoOperacao"] ?? r["tipo_operacao"] ?? "").toUpperCase();
+  const direction: "entrada" | "saida" = tipo === "D" ? "saida" : tipo === "C" ? "entrada" : (amountRaw >= 0 ? "entrada" : "saida");
+  const amount = Math.abs(amountRaw);
   return {
     company_id: companyId,
     movement_date: brDateToISO(r["dDtMovimento"] ?? r["data"]) ?? new Date().toISOString().slice(0, 10),
-    amount: Math.abs(amount),
-    direction: direction as "entrada" | "saida",
-    description: asString(r["cDescricao"] ?? r["descricao"]),
-    document_number: asString(r["cNumDocumento"] ?? r["numero_documento"]),
-    source_record_id: asString(r["nCodTitulo"] ?? r["nCodMovimento"]),
+    amount,
+    direction,
+    description: asString(r["cDescricao"] ?? r["descricao"] ?? r["cObservacao"]),
+    document_number: asString(r["cNumDocumento"] ?? r["numero_documento"] ?? r["cNumeroDocumento"]),
+    source_record_id: asString(r["nCodTitulo"] ?? r["nCodMovimento"] ?? r["nCodLanc"]),
     bank_account_id: null as string | null,
   };
 }
