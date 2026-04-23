@@ -63,52 +63,66 @@
 
 :root {
   --radius: 0.625rem;
-  /* Hitech Electric — Executive Dark Cockpit */
-  --background: oklch(0.18 0.012 285);          /* #25222B-ish, deep graphite */
-  --foreground: oklch(0.97 0.005 95);           /* near-white */
-  --card: oklch(0.22 0.014 285);                /* slightly lifted surface */
-  --card-foreground: oklch(0.97 0.005 95);
-  --popover: oklch(0.22 0.014 285);
-  --popover-foreground: oklch(0.97 0.005 95);
-  --primary: oklch(0.93 0.18 102);              /* Hitech yellow #EDE810 */
-  --primary-foreground: oklch(0.15 0 0);        /* near black on yellow */
-  --secondary: oklch(0.28 0.015 285);
-  --secondary-foreground: oklch(0.97 0.005 95);
-  --muted: oklch(0.26 0.014 285);
-  --muted-foreground: oklch(0.72 0.012 285);
+  /* Hitech Electric — Executive Dark Cockpit (refined v2) */
+  /* Background hierarchy: app < panel < card < popover */
+  --background: oklch(0.155 0.010 285);         /* deeper, calmer base */
+  --foreground: oklch(0.975 0.004 95);          /* high-contrast text */
+  --panel: oklch(0.185 0.012 285);              /* sub-surface for sections */
+  --card: oklch(0.215 0.013 285);               /* lifted card */
+  --card-foreground: oklch(0.975 0.004 95);
+  --popover: oklch(0.235 0.013 285);
+  --popover-foreground: oklch(0.975 0.004 95);
+  --primary: oklch(0.93 0.18 102);              /* Hitech yellow #EDE810 — ACCENT only */
+  --primary-foreground: oklch(0.13 0 0);
+  --secondary: oklch(0.265 0.013 285);
+  --secondary-foreground: oklch(0.975 0.004 95);
+  --muted: oklch(0.245 0.012 285);
+  --muted-foreground: oklch(0.70 0.010 285);
   --accent: oklch(0.93 0.18 102);
-  --accent-foreground: oklch(0.15 0 0);
-  --destructive: oklch(0.62 0.23 27);
+  --accent-foreground: oklch(0.13 0 0);
+  --destructive: oklch(0.64 0.23 27);
   --destructive-foreground: oklch(0.98 0.005 95);
-  --success: oklch(0.74 0.16 152);
-  --success-foreground: oklch(0.15 0 0);
-  --warning: oklch(0.82 0.17 75);
-  --warning-foreground: oklch(0.15 0 0);
-  --border: oklch(0.32 0.012 285 / 80%);
-  --input: oklch(0.30 0.012 285);
-  --ring: oklch(0.93 0.18 102);
-  --chart-1: oklch(0.93 0.18 102);              /* yellow */
-  --chart-2: oklch(0.74 0.16 152);              /* green */
-  --chart-3: oklch(0.68 0.14 240);              /* blue */
-  --chart-4: oklch(0.7 0.18 25);                /* red/orange */
-  --chart-5: oklch(0.75 0.05 285);              /* neutral */
-  --sidebar: oklch(0.13 0.008 285);             /* deep, almost black */
-  --sidebar-foreground: oklch(0.92 0.005 95);
+  --success: oklch(0.76 0.16 152);
+  --success-foreground: oklch(0.13 0 0);
+  --warning: oklch(0.83 0.17 75);
+  --warning-foreground: oklch(0.13 0 0);
+  --info: oklch(0.72 0.13 240);
+  --info-foreground: oklch(0.13 0 0);
+  --border: oklch(0.305 0.011 285 / 70%);
+  --border-strong: oklch(0.38 0.012 285 / 85%);
+  --input: oklch(0.27 0.012 285);
+  --ring: oklch(0.93 0.18 102 / 70%);
+  /* Charts: keep palette small and intentional (yellow = focus, green = positive, blue = neutral data, red = negative). */
+  --chart-1: oklch(0.93 0.18 102);
+  --chart-2: oklch(0.76 0.16 152);
+  --chart-3: oklch(0.72 0.13 240);
+  --chart-4: oklch(0.70 0.20 27);
+  --chart-5: oklch(0.62 0.018 285);
+  --sidebar: oklch(0.115 0.008 285);
+  --sidebar-foreground: oklch(0.93 0.005 95);
   --sidebar-primary: oklch(0.93 0.18 102);
-  --sidebar-primary-foreground: oklch(0.15 0 0);
-  --sidebar-accent: oklch(0.22 0.014 285);
+  --sidebar-primary-foreground: oklch(0.13 0 0);
+  --sidebar-accent: oklch(0.205 0.013 285);
   --sidebar-accent-foreground: oklch(0.97 0.005 95);
-  --sidebar-border: oklch(0.28 0.012 285 / 60%);
+  --sidebar-border: oklch(0.27 0.012 285 / 60%);
   --sidebar-ring: oklch(0.93 0.18 102);
 
   /* Hitech tokens */
   --hitech-yellow: oklch(0.93 0.18 102);
   --hitech-graphite: oklch(0.30 0.012 285);
   --hitech-black: oklch(0.10 0 0);
-  --gradient-hero: linear-gradient(135deg, oklch(0.18 0.012 285) 0%, oklch(0.13 0.008 285) 100%);
-  --gradient-accent: linear-gradient(135deg, oklch(0.93 0.18 102) 0%, oklch(0.85 0.16 90) 100%);
-  --shadow-elev: 0 1px 0 0 oklch(1 0 0 / 4%) inset, 0 10px 30px -12px oklch(0 0 0 / 50%);
-  --shadow-glow: 0 0 0 1px oklch(0.93 0.18 102 / 25%), 0 8px 30px -8px oklch(0.93 0.18 102 / 25%);
+  --gradient-hero: radial-gradient(120% 80% at 0% 0%, oklch(0.22 0.014 285) 0%, oklch(0.155 0.010 285) 60%);
+  --gradient-accent: linear-gradient(135deg, oklch(0.95 0.17 100) 0%, oklch(0.88 0.18 95) 100%);
+  --gradient-kpi-accent: linear-gradient(180deg, oklch(0.93 0.18 102 / 14%) 0%, oklch(0.93 0.18 102 / 0%) 60%);
+  --shadow-elev: 0 1px 0 0 oklch(1 0 0 / 5%) inset, 0 12px 28px -16px oklch(0 0 0 / 55%);
+  --shadow-card: 0 1px 0 0 oklch(1 0 0 / 4%) inset, 0 1px 2px oklch(0 0 0 / 30%), 0 8px 24px -16px oklch(0 0 0 / 50%);
+  --shadow-glow: 0 0 0 1px oklch(0.93 0.18 102 / 28%), 0 10px 32px -10px oklch(0.93 0.18 102 / 25%);
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --motion-fast: 140ms;
+  --motion-base: 200ms;
 }
 
 .dark {
@@ -154,5 +168,76 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    font-feature-settings: "ss01", "cv11", "cv02";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
+
+  /* Tabular numerals everywhere numbers matter */
+  .tabular-nums { font-variant-numeric: tabular-nums; }
+
+  /* Subtle scrollbars (dark cockpit) */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: oklch(0.32 0.012 285 / 60%);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: oklch(0.42 0.012 285 / 80%); background-clip: padding-box; }
+
+  /* Focus ring */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+}
+
+/* ====== Utility layer: executive cockpit primitives ====== */
+@layer utilities {
+  .surface-card {
+    background-color: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-card);
+  }
+  .surface-panel {
+    background-color: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 0.875rem;
+  }
+  .hairline { border-color: var(--border); }
+  .hairline-strong { border-color: var(--border-strong); }
+
+  .text-eyebrow {
+    font-size: 11px;
+    line-height: 1;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+    font-weight: 500;
+  }
+  .text-metric {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    font-weight: 600;
+  }
+
+  .anim-fade-in { animation: fadeIn var(--motion-base) var(--ease-out) both; }
+  .anim-rise { animation: rise 280ms var(--ease-out) both; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }

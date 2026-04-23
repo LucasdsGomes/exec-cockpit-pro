@@ -33,6 +33,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { PeriodPresets } from "@/components/ui/period-presets";
 
 const NAV = [
   { to: "/", label: "Home", icon: LayoutDashboard },
@@ -58,22 +59,30 @@ export function AppShell() {
     .slice(0, 2)
     .join("")
     .toUpperCase();
+
   return (
-    <div className="min-h-screen bg-background text-foreground flex">
+    <div className="min-h-screen bg-background text-foreground flex selection:bg-primary/30 selection:text-foreground">
       {/* Sidebar */}
-      <aside className="w-64 shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col">
-        <div className="h-16 flex items-center gap-2 px-5 border-b border-sidebar-border">
-          <div className="size-9 rounded-md grid place-items-center bg-primary text-primary-foreground">
-            <Zap className="size-5" strokeWidth={2.5} />
+      <aside className="w-60 shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col">
+        <div className="h-16 flex items-center gap-2.5 px-5 border-b border-sidebar-border">
+          <div
+            className="size-9 rounded-lg grid place-items-center bg-primary text-primary-foreground"
+            style={{ boxShadow: "0 4px 14px -4px oklch(0.93 0.18 102 / 40%)" }}
+          >
+            <Zap className="size-[18px]" strokeWidth={2.5} />
           </div>
           <div className="leading-tight">
             <div className="text-sm font-semibold tracking-wide">HITECH</div>
-            <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-              Electric • Cockpit
+            <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mt-0.5">
+              Electric · Cockpit
             </div>
           </div>
         </div>
-        <nav className="flex-1 p-3 space-y-1">
+
+        <nav className="flex-1 p-3 space-y-0.5">
+          <div className="px-3 pt-2 pb-1.5 text-[10px] uppercase tracking-[0.2em] text-muted-foreground/70 font-medium">
+            Navegação
+          </div>
           {NAV.map((n) => {
             const active =
               n.to === "/" ? loc.pathname === "/" : loc.pathname.startsWith(n.to);
@@ -82,55 +91,83 @@ export function AppShell() {
               <Link
                 key={n.to}
                 to={n.to}
-                className={`group flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors ${
+                className={`group relative flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors duration-150 ${
                   active
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-primary pl-[10px]"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                    : "text-sidebar-foreground/65 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
                 }`}
               >
-                <Icon className={`size-4 ${active ? "text-primary" : ""}`} />
-                <span className="font-medium">{n.label}</span>
+                {active && (
+                  <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r-full bg-primary" />
+                )}
+                <Icon
+                  className={`size-4 transition-colors ${
+                    active ? "text-primary" : "group-hover:text-foreground"
+                  }`}
+                  strokeWidth={active ? 2.25 : 1.75}
+                />
+                <span className={active ? "font-medium" : "font-normal"}>{n.label}</span>
               </Link>
             );
           })}
         </nav>
-        <div className="p-4 border-t border-sidebar-border text-xs text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <span className="size-2 rounded-full bg-success" />
-            Integração OMIE conectada
+
+        <div className="p-3 m-3 mt-0 border border-sidebar-border rounded-lg bg-sidebar-accent/30 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2 text-foreground/90">
+            <span className="relative flex size-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-60" />
+              <span className="relative inline-flex size-2 rounded-full bg-success" />
+            </span>
+            <span className="font-medium">OMIE conectado</span>
           </div>
-          <div className="mt-1">Última sync: {sync.ultima}</div>
+          <div className="mt-1.5 text-[11px]">Última sync · {sync.ultima}</div>
         </div>
       </aside>
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="h-16 border-b border-border bg-card/40 backdrop-blur flex items-center gap-3 px-6">
-          <div className="relative w-72">
+        <header className="h-16 border-b border-border bg-background/70 backdrop-blur-md flex items-center gap-3 px-6 sticky top-0 z-30">
+          <div className="relative w-80 max-w-[40vw]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
             <Input
-              placeholder="Buscar conta, fornecedor, cliente..."
-              className="pl-9 bg-input/60 border-border"
+              placeholder="Buscar conta, fornecedor, cliente…"
+              className="pl-9 h-9 bg-input/40 border-border focus-visible:bg-input/70 transition-colors"
             />
+            <kbd className="hidden md:inline-flex absolute right-2.5 top-1/2 -translate-y-1/2 h-5 items-center gap-1 rounded border border-border bg-card px-1.5 text-[10px] font-medium text-muted-foreground">
+              ⌘K
+            </kbd>
           </div>
-          <div className="ml-auto flex items-center gap-2">
-            <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
-              <RefreshCw className="size-4" />
+          <div className="ml-auto flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:text-foreground gap-1.5 h-8"
+            >
+              <RefreshCw className="size-3.5" />
               Atualizar
             </Button>
-            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground hover:text-foreground size-8 relative"
+              aria-label="Notificações"
+            >
               <Bell className="size-4" />
+              <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-warning ring-2 ring-background" />
             </Button>
+            <span className="h-5 w-px bg-border mx-1" />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-2 pl-3 border-l border-border outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
-                  <div className="size-8 rounded-full bg-primary text-primary-foreground grid place-items-center text-xs font-semibold">
+                <button className="flex items-center gap-2 outline-none rounded-md px-1.5 py-1 hover:bg-card transition-colors">
+                  <div className="size-8 rounded-full bg-gradient-to-br from-primary to-primary/70 text-primary-foreground grid place-items-center text-xs font-semibold">
                     {initials}
                   </div>
-                  <div className="leading-tight text-left">
-                    <div className="text-sm font-medium">{displayName}</div>
-                    <div className="text-[11px] text-muted-foreground">{user?.email ?? "—"}</div>
+                  <div className="leading-tight text-left hidden sm:block">
+                    <div className="text-sm font-medium truncate max-w-[140px]">{displayName}</div>
+                    <div className="text-[11px] text-muted-foreground truncate max-w-[160px]">
+                      {user?.email ?? "—"}
+                    </div>
                   </div>
                   <ChevronDown className="size-4 text-muted-foreground" />
                 </button>
@@ -154,52 +191,68 @@ export function AppShell() {
         </header>
 
         {/* Global filters */}
-        <div className="border-b border-border bg-card/20 px-6 py-3 flex flex-wrap items-center gap-2">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground mr-1">
-            Filtros globais
-          </span>
-          <FilterSelect placeholder="Período" defaultValue="mes" items={[
-            { v: "hoje", l: "Hoje" }, { v: "semana", l: "Esta semana" },
-            { v: "mes", l: "Este mês" }, { v: "trimestre", l: "Trimestre" },
-            { v: "ano", l: "Ano" }, { v: "ytd", l: "YTD" },
-          ]} />
-          <FilterSelect placeholder="Empresa / Unidade" defaultValue="todas" items={[
-            { v: "todas", l: "Todas as unidades" },
-            { v: "matriz", l: "Matriz - SP" },
-            { v: "rj", l: "Filial - RJ" },
-            { v: "mg", l: "Filial - MG" },
-          ]} />
-          <FilterSelect placeholder="Conta bancária" defaultValue="todas" items={[
-            { v: "todas", l: "Todas as contas" },
-            { v: "itau", l: "Itaú CC 12345-6" },
-            { v: "brad", l: "Bradesco CC 98765-4" },
-            { v: "sant", l: "Santander CC 55555-1" },
-          ]} />
-          <FilterSelect placeholder="Centro de custo" defaultValue="todos" items={[
-            { v: "todos", l: "Todos C. Custo" },
-            { v: "com", l: "Comercial" },
-            { v: "ope", l: "Operações" },
-            { v: "adm", l: "Administrativo" },
-          ]} />
-          <FilterSelect placeholder="Categoria" defaultValue="todas" items={[
-            { v: "todas", l: "Todas categorias" },
-            { v: "vendas", l: "Vendas" },
-            { v: "pessoal", l: "Pessoal" },
-            { v: "impostos", l: "Impostos" },
-          ]} />
-          <FilterSelect placeholder="Visão" defaultValue="cons" items={[
-            { v: "real", l: "Realizado" },
-            { v: "prev", l: "Previsto" },
-            { v: "cons", l: "Consolidado" },
-            { v: "orc", l: "Orçado vs Realizado" },
-          ]} />
-          <Badge variant="outline" className="ml-auto border-primary/40 text-primary bg-primary/10">
+        <div className="border-b border-border bg-card/10 px-6 py-2.5 flex flex-wrap items-center gap-2">
+          <PeriodPresets defaultValue="30d" />
+          <span className="h-5 w-px bg-border mx-1" />
+          <FilterSelect
+            placeholder="Unidade"
+            defaultValue="todas"
+            items={[
+              { v: "todas", l: "Todas as unidades" },
+              { v: "matriz", l: "Matriz · SP" },
+              { v: "rj", l: "Filial · RJ" },
+              { v: "mg", l: "Filial · MG" },
+            ]}
+          />
+          <FilterSelect
+            placeholder="Conta bancária"
+            defaultValue="todas"
+            items={[
+              { v: "todas", l: "Todas as contas" },
+              { v: "itau", l: "Itaú CC 12345-6" },
+              { v: "brad", l: "Bradesco CC 98765-4" },
+              { v: "sant", l: "Santander CC 55555-1" },
+            ]}
+          />
+          <FilterSelect
+            placeholder="Centro de custo"
+            defaultValue="todos"
+            items={[
+              { v: "todos", l: "Todos C. Custo" },
+              { v: "com", l: "Comercial" },
+              { v: "ope", l: "Operações" },
+              { v: "adm", l: "Administrativo" },
+            ]}
+          />
+          <FilterSelect
+            placeholder="Visão"
+            defaultValue="cons"
+            items={[
+              { v: "real", l: "Realizado" },
+              { v: "prev", l: "Previsto" },
+              { v: "cons", l: "Consolidado" },
+              { v: "orc", l: "Orçado vs Realizado" },
+            ]}
+          />
+          <button
+            type="button"
+            className="h-7 px-2.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors rounded-md"
+          >
+            Limpar filtros
+          </button>
+          <Badge
+            variant="outline"
+            className="ml-auto border-primary/30 text-primary bg-primary/5 font-medium gap-1.5"
+          >
+            <span className="size-1.5 rounded-full bg-primary" />
             {sync.fonte}
           </Badge>
         </div>
 
         <main className="flex-1 p-6 overflow-auto">
-          <Outlet />
+          <div className="max-w-[1600px] mx-auto anim-fade-in">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>
@@ -207,16 +260,24 @@ export function AppShell() {
 }
 
 function FilterSelect({
-  placeholder, defaultValue, items,
-}: { placeholder: string; defaultValue: string; items: { v: string; l: string }[] }) {
+  placeholder,
+  defaultValue,
+  items,
+}: {
+  placeholder: string;
+  defaultValue: string;
+  items: { v: string; l: string }[];
+}) {
   return (
     <Select defaultValue={defaultValue}>
-      <SelectTrigger className="h-8 w-auto min-w-[140px] bg-input/60 border-border text-xs">
+      <SelectTrigger className="h-7 w-auto min-w-[130px] bg-input/40 border-border text-[11px] font-medium hover:bg-input/70 transition-colors">
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
         {items.map((i) => (
-          <SelectItem key={i.v} value={i.v} className="text-xs">{i.l}</SelectItem>
+          <SelectItem key={i.v} value={i.v} className="text-xs">
+            {i.l}
+          </SelectItem>
         ))}
       </SelectContent>
     </Select>
