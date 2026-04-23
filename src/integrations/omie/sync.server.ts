@@ -36,37 +36,37 @@ function logCtx(level: "info" | "warn" | "error", message: string, ctx: Record<s
 }
 
 async function logToDb(companyId: string, batchId: string | null, level: string, message: string, endpoint: string | null, context: Record<string, unknown> = {}) {
-  await supabaseAdmin.from("omie_sync_logs").insert({
+  await supabaseAdmin.from("omie_sync_logs").insert([{
     company_id: companyId,
     batch_id: batchId,
     level,
     message,
     source_endpoint: endpoint,
-    context,
-  });
+    context: context as never,
+  }]);
 }
 
 async function recordError(companyId: string, batchId: string | null, endpoint: string, message: string, payload: unknown, code?: string) {
-  await supabaseAdmin.from("omie_sync_errors").insert({
+  await supabaseAdmin.from("omie_sync_errors").insert([{
     company_id: companyId,
     batch_id: batchId,
     source_endpoint: endpoint,
     error_message: message,
     error_code: code ?? null,
     payload: (payload ?? null) as never,
-  });
+  }]);
 }
 
 async function startBatch(companyId: string, endpoint: string, triggeredBy: string | null, metadata: Record<string, unknown>) {
   const { data, error } = await supabaseAdmin
     .from("omie_raw_sync_batches")
-    .insert({
+    .insert([{
       company_id: companyId,
       source_endpoint: endpoint,
       status: "running",
       triggered_by: triggeredBy,
-      metadata,
-    })
+      metadata: metadata as never,
+    }])
     .select("id")
     .single();
   if (error || !data) throw new Error(`Failed to start batch: ${error?.message}`);
