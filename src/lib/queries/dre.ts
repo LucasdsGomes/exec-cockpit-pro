@@ -160,3 +160,68 @@ export function useDreWaterfall(
     },
   });
 }
+
+// ---------- B.2 Drill-down: lançamentos por linha de DRE ----------
+
+export interface DreEntryRow {
+  id: string;
+  competence_date: string;
+  dre_group: string;
+  amount_signed: number;
+  description: string | null;
+  supplier_name: string | null;
+  customer_name: string | null;
+  category_mapped: string | null;
+}
+
+/**
+ * Returns the financial_entries rows whose dre_group matches one of the
+ * raw groups that compose the requested DRE line. Respects the same period
+ * and global filters used by useDreLines.
+ */
+export function useDreEntriesByLine(
+  companyId: string | null | undefined,
+  lineLabel: string | null,
+  period: string,
+  filters?: Partial<GlobalFilters>,
+) {
+  const cc = filters?.costCenterId ?? null;
+  const bu = filters?.businessUnit ?? null;
+  return useQuery({
+    queryKey: ["dreEntriesByLine", companyId, lineLabel, period, cc, bu],
+    enabled: !!companyId && !!lineLabel,
+    queryFn: async (): Promise<DreEntryRow[]> => {
+      const range = periodToRange(period);
+      // Map UI label back to dre_group(s). Stripping prefixes like "(-) " and "Margem"/"EBITDA" subtotals.
+      const label = lineLabel ?? "";
+      const cleaned = label.replace(/^\(\-\)\s*/, "").trim();
+      // Subtotals/totals don't map to a single group → query all rows in range as best-effort.
+      const SUBTOTAL_LABELS = new Set([
+        "Receita Líquida",
+        "Margem Bruta",
+        "EBITDA",
+        "Lucro Líquido",
+      ]);
+      let q = supabase
+        .from("financial_entries")
+        .select(
+          "id, competence_date, dre_group, amount_signed, description, supplier_name, customer_name, category_mapped",
+        )
+        .eq("company_id", companyId!)
+        .gte("competence_date", range.start)
+        .lte("competence_date", range.end)
+        .order("competence_date", { ascending: false })
+        .limit(500);
+      if (!SUBTOTAL_LABELS.has(cleaned)) {
+        q = q.eq("dre_group", cleaned);
+      }
+      if (cc) q = q.eq("cost_center_id", cc);
+      if (bu) q = q.eq("business_unit", bu);
+      const { data } = await q;
+      return (data ?? []).map((r) => ({
+        ...r,
+        amount_signed: Number(r.amount_signed ?? 0),
+      })) as DreEntryRow[];
+    },
+  });
+}
