@@ -20,6 +20,7 @@ import {
   useBankAccountsStatus,
   useSyncBankStatements,
   useImportBankMovements,
+  useLatestBankBalances,
   type ManualBankMovementInput,
 } from "@/lib/queries/admin";
 
@@ -43,6 +44,7 @@ export function InitialBalancesTab({ companyId }: { companyId: string | null | u
   const status = useBankAccountsStatus(companyId);
   const syncOne = useSyncBankStatements(companyId);
   const importMoves = useImportBankMovements(companyId);
+  const omieBalances = useLatestBankBalances(companyId);
   const fileRef = useRef<HTMLInputElement>(null);
   const [importTarget, setImportTarget] = useState<string>("");
 
@@ -143,6 +145,66 @@ export function InitialBalancesTab({ companyId }: { companyId: string | null | u
 
   return (
     <div className="space-y-4">
+      {/* Saldos bancários direto do Omie */}
+      <Card className="bg-card border-success/30">
+        <CardHeader className="flex-row items-center justify-between gap-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Wallet className="size-4 text-success" /> Saldos Bancários (Omie)
+          </CardTitle>
+          <span className="text-[11px] text-muted-foreground">
+            Sincronizado automaticamente · fonte de verdade do caixa
+          </span>
+        </CardHeader>
+        <CardContent>
+          {omieBalances.isLoading ? (
+            <Skeleton className="h-24" />
+          ) : (omieBalances.data ?? []).length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Nenhum saldo sincronizado ainda. Rode um sync na aba Diagnóstico para puxar os saldos atuais do Omie.
+              Enquanto isso, o cálculo de caixa usa os saldos manuais abaixo.
+            </p>
+          ) : (
+            <>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
+                    <th className="py-2">Conta</th>
+                    <th className="py-2">Data</th>
+                    <th className="py-2 text-right">Saldo</th>
+                    <th className="py-2 text-right pr-2">Bloqueado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(omieBalances.data ?? []).map((s) => (
+                    <tr key={s.bank_account_id} className="border-b border-border/60">
+                      <td className="py-2">
+                        {s.bank_account_bank ? `${s.bank_account_bank} · ` : ""}{s.bank_account_name ?? "—"}
+                      </td>
+                      <td className="py-2 text-xs text-muted-foreground">{s.snapshot_date}</td>
+                      <td className="py-2 text-right tabular-nums font-medium">{BRL(s.balance)}</td>
+                      <td className="py-2 text-right tabular-nums pr-2 text-muted-foreground">
+                        {s.blocked > 0 ? BRL(s.blocked) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr className="bg-success/5">
+                    <td colSpan={2} className="py-2 font-medium">Total</td>
+                    <td className="py-2 text-right tabular-nums font-semibold">
+                      {BRL((omieBalances.data ?? []).reduce((s, b) => s + b.balance, 0))}
+                    </td>
+                    <td className="py-2 pr-2"></td>
+                  </tr>
+                </tbody>
+              </table>
+              <p className="text-[11px] text-muted-foreground mt-2">
+                Quando há saldo do Omie, a projeção de caixa parte daqui e soma apenas o que entrou/saiu desde a data do snapshot.
+                Os saldos manuais de "Caixa / Banco" abaixo deixam de ser usados.
+              </p>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Status de extratos por conta + import manual */}
       <Card className="bg-card border-border">
         <CardHeader className="flex-row items-center justify-between gap-2">
