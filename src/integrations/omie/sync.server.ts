@@ -1330,3 +1330,60 @@ async function runLancamentosCCSync(opts: {
   }
   return { key: "lancamentos_cc", batchId, inserted, updated, errors, durationMs: Date.now() - start };
 }
+
+// --- Projetos & Tags ---
+
+async function upsertProjeto(item: AnyRec, companyId: string) {
+  const code = asString(item["codigo"] ?? item["nCodProj"] ?? item["codint"]);
+  if (!code) return { inserted: 0, updated: 0, errors: 0 };
+  const name = asString(item["nome"] ?? item["cNome"] ?? item["descricao"]) ?? code;
+  const status = asString(item["inativo"]) === "S" ? "inativo" : (asString(item["status"]) ?? "ativo");
+  const startDate = brDateToISO(item["dInicio"] ?? item["data_inicio"]);
+  const endDate = brDateToISO(item["dTermino"] ?? item["data_termino"]);
+  const payload = {
+    company_id: companyId,
+    source_record_id: code,
+    code,
+    name,
+    status,
+    start_date: startDate,
+    end_date: endDate,
+    active: status !== "inativo",
+    metadata: item as never,
+    synced_at: new Date().toISOString(),
+  };
+  const { data: existing } = await supabaseAdmin
+    .from("projects").select("id").eq("company_id", companyId).eq("code", code).maybeSingle();
+  if (existing) {
+    const { error } = await supabaseAdmin.from("projects").update(payload).eq("id", existing.id);
+    return { inserted: 0, updated: error ? 0 : 1, errors: error ? 1 : 0 };
+  }
+  const { error } = await supabaseAdmin.from("projects").insert([payload]);
+  return { inserted: error ? 0 : 1, updated: 0, errors: error ? 1 : 0 };
+}
+
+async function upsertTag(item: AnyRec, companyId: string) {
+  const code = asString(item["nCodCadTag"] ?? item["cCodIntTag"] ?? item["codigo"]);
+  if (!code) return { inserted: 0, updated: 0, errors: 0 };
+  const description = asString(item["cNomeTag"] ?? item["descricao"] ?? item["nome"]) ?? code;
+  const color = asString(item["cCorTag"] ?? item["cor"]);
+  const inactive = asString(item["cInativa"] ?? item["inativo"]) === "S";
+  const payload = {
+    company_id: companyId,
+    source_record_id: code,
+    code,
+    description,
+    color,
+    active: !inactive,
+    metadata: item as never,
+    synced_at: new Date().toISOString(),
+  };
+  const { data: existing } = await supabaseAdmin
+    .from("tags").select("id").eq("company_id", companyId).eq("code", code).maybeSingle();
+  if (existing) {
+    const { error } = await supabaseAdmin.from("tags").update(payload).eq("id", existing.id);
+    return { inserted: 0, updated: error ? 0 : 1, errors: error ? 1 : 0 };
+  }
+  const { error } = await supabaseAdmin.from("tags").insert([payload]);
+  return { inserted: error ? 0 : 1, updated: 0, errors: error ? 1 : 0 };
+}
