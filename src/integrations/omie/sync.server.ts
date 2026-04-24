@@ -870,6 +870,15 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
           upsert: (item, batchId) => upsertFiscalDoc(mapNFSe(item, opts.companyId, batchId)),
         });
         break;
+      case "lancamentos_cc":
+        r = await runLancamentosCCSync({
+          companyId: opts.companyId,
+          triggeredBy,
+          startDate: opts.startDate,
+          endDate: opts.endDate,
+          bankAccountId: opts.bankAccountId ?? null,
+        });
+        break;
     }
     results.push(r);
     totalInserted += r.inserted;
