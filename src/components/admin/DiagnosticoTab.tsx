@@ -2,9 +2,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Activity, CheckCircle2, AlertTriangle, Clock, Database, Loader2, Wrench, Link2, FileText, GitMerge, ShoppingCart, Receipt, Banknote, ArrowLeftRight, FolderKanban, Tag } from "lucide-react";
+import { Activity, CheckCircle2, AlertTriangle, Clock, Database, Loader2, Wrench, Link2, FileText, GitMerge, ShoppingCart, Receipt, Banknote, ArrowLeftRight, FolderKanban, Tag, Landmark } from "lucide-react";
 import { useSystemHealth, useCronJobs, useBackfillBalance, useMirrorApAr, useBackfillRefs } from "@/lib/queries/health";
-import { useSyncBankStatements, useReconcileBankMovements, useSyncCommercialCommitments, useCommercialCommitmentsSummary, useSyncFiscalDocuments, useFiscalDocumentsSummary, useSyncLancamentosCC, usePairBankTransfers, useBankMovementsSummary, useSyncProjectsAndTags, useLinkEntriesToProjects, useProjectsSummary } from "@/lib/queries/admin";
+import { useSyncBankStatements, useReconcileBankMovements, useSyncCommercialCommitments, useCommercialCommitmentsSummary, useSyncFiscalDocuments, useFiscalDocumentsSummary, useSyncLancamentosCC, usePairBankTransfers, useBankMovementsSummary, useSyncProjectsAndTags, useLinkEntriesToProjects, useProjectsSummary, useSyncLoans, useLoansSummary } from "@/lib/queries/admin";
 import { toast } from "sonner";
 
 function fmt(d: string | null) {
@@ -44,6 +44,8 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
   const syncProjects = useSyncProjectsAndTags(companyId);
   const linkProjects = useLinkEntriesToProjects(companyId);
   const projects = useProjectsSummary(companyId);
+  const syncLoans = useSyncLoans(companyId);
+  const loans = useLoansSummary(companyId);
 
   const handleBackfill = () => {
     toast.promise(backfill.mutateAsync(30), {
@@ -134,6 +136,15 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
     toast.promise(linkProjects.mutateAsync(), {
       loading: "Vinculando lançamentos a projetos…",
       success: (r) => `${r.linked} lançamento(s) vinculado(s) a projetos`,
+      error: (e) => `Erro: ${e.message}`,
+    });
+  };
+
+  const handleSyncLoans = () => {
+    toast.promise(syncLoans.mutateAsync(), {
+      loading: "Sincronizando contratos de empréstimo (Omie)…",
+      success: (r) =>
+        `Empréstimos · ${r.totals?.inserted ?? 0} novos, ${r.totals?.updated ?? 0} atualizados`,
       error: (e) => `Erro: ${e.message}`,
     });
   };
