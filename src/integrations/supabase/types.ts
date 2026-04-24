@@ -350,6 +350,8 @@ export type Database = {
         Row: {
           amount: number
           bank_account_id: string
+          category_mapped: string | null
+          category_raw: string | null
           company_id: string
           created_at: string
           description: string | null
@@ -357,15 +359,21 @@ export type Database = {
           document_number: string | null
           financial_entry_id: string | null
           id: string
+          kind: Database["public"]["Enums"]["bank_movement_kind"]
+          metadata: Json | null
           movement_date: string
           reconciled: boolean
+          source_endpoint: string | null
           source_record_id: string | null
           synced_at: string | null
+          transfer_pair_id: string | null
           updated_at: string
         }
         Insert: {
           amount: number
           bank_account_id: string
+          category_mapped?: string | null
+          category_raw?: string | null
           company_id: string
           created_at?: string
           description?: string | null
@@ -373,15 +381,21 @@ export type Database = {
           document_number?: string | null
           financial_entry_id?: string | null
           id?: string
+          kind?: Database["public"]["Enums"]["bank_movement_kind"]
+          metadata?: Json | null
           movement_date: string
           reconciled?: boolean
+          source_endpoint?: string | null
           source_record_id?: string | null
           synced_at?: string | null
+          transfer_pair_id?: string | null
           updated_at?: string
         }
         Update: {
           amount?: number
           bank_account_id?: string
+          category_mapped?: string | null
+          category_raw?: string | null
           company_id?: string
           created_at?: string
           description?: string | null
@@ -389,10 +403,14 @@ export type Database = {
           document_number?: string | null
           financial_entry_id?: string | null
           id?: string
+          kind?: Database["public"]["Enums"]["bank_movement_kind"]
+          metadata?: Json | null
           movement_date?: string
           reconciled?: boolean
+          source_endpoint?: string | null
           source_record_id?: string | null
           synced_at?: string | null
+          transfer_pair_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -429,6 +447,13 @@ export type Database = {
             columns: ["financial_entry_id"]
             isOneToOne: false
             referencedRelation: "v_unclassified_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_movements_transfer_pair_id_fkey"
+            columns: ["transfer_pair_id"]
+            isOneToOne: false
+            referencedRelation: "bank_movements"
             referencedColumns: ["id"]
           },
         ]
@@ -2955,6 +2980,7 @@ export type Database = {
         Args: { _company: string }
         Returns: number
       }
+      pair_bank_transfers: { Args: { _company: string }; Returns: Json }
       propagate_entry_refs: { Args: { _company: string }; Returns: Json }
       reclassify_company: {
         Args: { _company: string; _only_unclassified?: boolean }
@@ -2992,6 +3018,15 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "finance" | "controller" | "viewer"
+      bank_movement_kind:
+        | "extrato"
+        | "lancamento_cc"
+        | "transferencia"
+        | "tarifa"
+        | "juros"
+        | "rendimento"
+        | "manual"
+        | "outro"
       budget_scenario: "orcado" | "realizado" | "reprojetado"
       commitment_kind: "pedido_venda" | "ordem_compra"
       commitment_status: "aberto" | "parcial" | "faturado" | "cancelado"
@@ -3138,6 +3173,16 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "finance", "controller", "viewer"],
+      bank_movement_kind: [
+        "extrato",
+        "lancamento_cc",
+        "transferencia",
+        "tarifa",
+        "juros",
+        "rendimento",
+        "manual",
+        "outro",
+      ],
       budget_scenario: ["orcado", "realizado", "reprojetado"],
       commitment_kind: ["pedido_venda", "ordem_compra"],
       commitment_status: ["aberto", "parcial", "faturado", "cancelado"],
