@@ -9,7 +9,8 @@ export type OmieEndpointKey =
   | "centros_de_custo"
   | "clientes"
   | "fornecedores"
-  | "contas_correntes";
+  | "contas_correntes"
+  | "saldos_bancarios";
 
 export interface OmieEndpointDef {
   key: OmieEndpointKey;
@@ -77,12 +78,20 @@ export const OMIE_ENDPOINTS: Record<OmieEndpointKey, OmieEndpointDef> = {
     call: "ListarContasCorrentes",
     idField: "nCodCC",
   },
+  saldos_bancarios: {
+    key: "saldos_bancarios",
+    label: "Saldos Bancários",
+    endpoint: "financas/saldobancario",
+    call: "ListarPosicaoBancaria",
+    idField: "nCodCC",
+  },
 };
 
 export const OMIE_PRIORITY_ORDER: OmieEndpointKey[] = [
   "categorias",
   "centros_de_custo",
   "contas_correntes",
+  "saldos_bancarios",
   "clientes",
   "fornecedores",
   "contas_pagar",
