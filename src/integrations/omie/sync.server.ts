@@ -885,6 +885,15 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
       case "tags":
         r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: {}, upsert: (item) => upsertTag(item, opts.companyId) });
         break;
+      case "emprestimos_financiamentos":
+        r = await runListEndpoint({
+          key,
+          companyId: opts.companyId,
+          triggeredBy,
+          param: { pagina: 1, registros_por_pagina: 100 },
+          upsert: (item) => upsertLoan(item, opts.companyId),
+        });
+        break;
     }
     results.push(r);
     totalInserted += r.inserted;
