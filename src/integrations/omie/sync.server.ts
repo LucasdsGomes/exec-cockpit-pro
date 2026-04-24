@@ -852,6 +852,24 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
           upsert: (item, batchId) => upsertCommitment(mapOrdemCompra(item, opts.companyId, batchId)),
         });
         break;
+      case "notas_fiscais_emitidas":
+        r = await runListEndpoint({
+          key,
+          companyId: opts.companyId,
+          triggeredBy,
+          param: periodFilter,
+          upsert: (item, batchId) => upsertFiscalDoc(mapNFe(item, opts.companyId, batchId)),
+        });
+        break;
+      case "notas_servico_emitidas":
+        r = await runListEndpoint({
+          key,
+          companyId: opts.companyId,
+          triggeredBy,
+          param: periodFilter,
+          upsert: (item, batchId) => upsertFiscalDoc(mapNFSe(item, opts.companyId, batchId)),
+        });
+        break;
     }
     results.push(r);
     totalInserted += r.inserted;
