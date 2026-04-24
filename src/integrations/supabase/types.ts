@@ -292,6 +292,60 @@ export type Database = {
           },
         ]
       }
+      bank_balances_snapshots: {
+        Row: {
+          balance: number
+          bank_account_id: string
+          blocked: number
+          company_id: string
+          created_at: string
+          id: string
+          snapshot_date: string
+          source: string
+          synced_at: string
+          updated_at: string
+        }
+        Insert: {
+          balance?: number
+          bank_account_id: string
+          blocked?: number
+          company_id: string
+          created_at?: string
+          id?: string
+          snapshot_date: string
+          source?: string
+          synced_at?: string
+          updated_at?: string
+        }
+        Update: {
+          balance?: number
+          bank_account_id?: string
+          blocked?: number
+          company_id?: string
+          created_at?: string
+          id?: string
+          snapshot_date?: string
+          source?: string
+          synced_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_balances_snapshots_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_balances_snapshots_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bank_movements: {
         Row: {
           amount: number

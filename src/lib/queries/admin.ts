@@ -488,6 +488,63 @@ export function useBankAccounts(companyId: string | null | undefined) {
   });
 }
 
+export interface BankBalanceSnapshot {
+  bank_account_id: string;
+  snapshot_date: string;
+  balance: number;
+  blocked: number;
+  source: string;
+  synced_at: string;
+  bank_account_name: string | null;
+  bank_account_bank: string | null;
+}
+
+/**
+ * Returns the latest bank-balance snapshot per account (one row per bank_account).
+ * Source of truth when populated by Omie sync.
+ */
+export function useLatestBankBalances(companyId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["bankBalancesLatest", companyId],
+    enabled: !!companyId,
+    queryFn: async (): Promise<BankBalanceSnapshot[]> => {
+      const { data } = await supabase
+        .from("bank_balances_snapshots")
+        .select("bank_account_id, snapshot_date, balance, blocked, source, synced_at, bank_accounts(name, bank_name)")
+        .eq("company_id", companyId!)
+        .order("snapshot_date", { ascending: false })
+        .limit(500);
+      const rows = (data ?? []) as Array<{
+        bank_account_id: string;
+        snapshot_date: string;
+        balance: number;
+        blocked: number;
+        source: string;
+        synced_at: string;
+        bank_accounts: { name: string | null; bank_name: string | null } | null;
+      }>;
+      // Keep most recent per account
+      const seen = new Set<string>();
+      const latest: BankBalanceSnapshot[] = [];
+      for (const r of rows) {
+        if (seen.has(r.bank_account_id)) continue;
+        seen.add(r.bank_account_id);
+        latest.push({
+          bank_account_id: r.bank_account_id,
+          snapshot_date: r.snapshot_date,
+          balance: Number(r.balance ?? 0),
+          blocked: Number(r.blocked ?? 0),
+          source: r.source,
+          synced_at: r.synced_at,
+          bank_account_name: r.bank_accounts?.name ?? null,
+          bank_account_bank: r.bank_accounts?.bank_name ?? null,
+        });
+      }
+      return latest;
+    },
+  });
+}
+
 export function useSeedInitialBalances(companyId: string | null | undefined) {
   const qc = useQueryClient();
   return useMutation({
