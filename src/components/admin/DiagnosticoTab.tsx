@@ -154,6 +154,45 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
 
       <Card className="bg-card border-border">
         <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <ShoppingCart className="size-4 text-primary" /> Compromissos Comerciais (Omie)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="rounded-md border border-border bg-background/40 px-3 py-2.5">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Pedidos abertos</div>
+              <div className="text-lg font-semibold tabular-nums mt-0.5">
+                {(commitments.data?.openPedidos ?? 0).toLocaleString("pt-BR")}
+              </div>
+            </div>
+            <div className="rounded-md border border-border bg-background/40 px-3 py-2.5">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">OCs abertas</div>
+              <div className="text-lg font-semibold tabular-nums mt-0.5">
+                {(commitments.data?.openOcs ?? 0).toLocaleString("pt-BR")}
+              </div>
+            </div>
+            <div className="rounded-md border border-border bg-background/40 px-3 py-2.5">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Entradas previstas (ponderado)</div>
+              <div className="text-lg font-semibold tabular-nums mt-0.5 text-success">
+                {(commitments.data?.weightedPedidos ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              </div>
+            </div>
+            <div className="rounded-md border border-border bg-background/40 px-3 py-2.5">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Saídas previstas (ponderado)</div>
+              <div className="text-lg font-semibold tabular-nums mt-0.5 text-destructive">
+                {(commitments.data?.weightedOcs ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground pt-3">
+            Pedidos têm peso de 80% e OCs de 90% na projeção de caixa. Quando viram CR/CP, são automaticamente vinculados e ignorados para evitar dupla contagem.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-card border-border">
+        <CardHeader>
           <CardTitle className="text-base">Contagens por tabela</CardTitle>
         </CardHeader>
         <CardContent>
