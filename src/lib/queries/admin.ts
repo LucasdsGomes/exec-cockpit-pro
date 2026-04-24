@@ -1059,3 +1059,66 @@ export function useImportBankMovements(companyId: string | null | undefined) {
     },
   });
 }
+// ---------- Module C: Projects & Tags ----------
+
+export function useSyncProjectsAndTags(companyId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      if (!companyId) throw new Error("Empresa não selecionada");
+      const res = await fetch("/api/public/hooks/omie-sync-now", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          companyId,
+          mode: "incremental",
+          endpoints: ["projetos", "tags"],
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json() as Promise<{
+        ok: boolean;
+        totals?: { inserted: number; updated: number; errors: number };
+      }>;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["projectsSummary", companyId] });
+      qc.invalidateQueries({ queryKey: ["systemHealth", companyId] });
+    },
+  });
+}
+
+export function useLinkEntriesToProjects(companyId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      if (!companyId) throw new Error("Empresa não selecionada");
+      const { data, error } = await supabase.rpc("link_financial_entries_to_projects", { _company: companyId });
+      if (error) throw error;
+      return data as { linked: number };
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["projectsSummary", companyId] }),
+  });
+}
+
+export function useProjectsSummary(companyId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["projectsSummary", companyId],
+    enabled: !!companyId,
+    queryFn: async () => {
+      const [{ count: projectsCount }, { count: tagsCount }, { count: linkedCount }] = await Promise.all([
+        supabase.from("projects").select("id", { count: "exact", head: true }).eq("company_id", companyId!).eq("active", true),
+        supabase.from("tags").select("id", { count: "exact", head: true }).eq("company_id", companyId!).eq("active", true),
+        supabase.from("financial_entries").select("id", { count: "exact", head: true }).eq("company_id", companyId!).not("project_id", "is", null),
+      ]);
+      return {
+        projects: projectsCount ?? 0,
+        tags: tagsCount ?? 0,
+        entriesLinked: linkedCount ?? 0,
+      };
+    },
+  });
+}
