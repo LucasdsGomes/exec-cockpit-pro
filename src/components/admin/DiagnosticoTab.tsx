@@ -2,9 +2,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Activity, CheckCircle2, AlertTriangle, Clock, Database, Loader2, Wrench, Link2, FileText, GitMerge, ShoppingCart, Receipt } from "lucide-react";
+import { Activity, CheckCircle2, AlertTriangle, Clock, Database, Loader2, Wrench, Link2, FileText, GitMerge, ShoppingCart, Receipt, Banknote, ArrowLeftRight } from "lucide-react";
 import { useSystemHealth, useCronJobs, useBackfillBalance, useMirrorApAr, useBackfillRefs } from "@/lib/queries/health";
-import { useSyncBankStatements, useReconcileBankMovements, useSyncCommercialCommitments, useCommercialCommitmentsSummary, useSyncFiscalDocuments, useFiscalDocumentsSummary } from "@/lib/queries/admin";
+import { useSyncBankStatements, useReconcileBankMovements, useSyncCommercialCommitments, useCommercialCommitmentsSummary, useSyncFiscalDocuments, useFiscalDocumentsSummary, useSyncLancamentosCC, usePairBankTransfers, useBankMovementsSummary } from "@/lib/queries/admin";
 import { toast } from "sonner";
 
 function fmt(d: string | null) {
@@ -38,6 +38,9 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
   const commitments = useCommercialCommitmentsSummary(companyId);
   const syncFiscal = useSyncFiscalDocuments(companyId);
   const fiscal = useFiscalDocumentsSummary(companyId);
+  const syncLancCC = useSyncLancamentosCC(companyId);
+  const pairTransfers = usePairBankTransfers(companyId);
+  const bmSummary = useBankMovementsSummary(companyId);
 
   const handleBackfill = () => {
     toast.promise(backfill.mutateAsync(30), {
@@ -98,6 +101,23 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
     });
   };
 
+  const handleSyncLancCC = () => {
+    toast.promise(syncLancCC.mutateAsync(90), {
+      loading: "Sincronizando lançamentos de conta corrente (últimos 90 dias)…",
+      success: (r) =>
+        `Lançamentos CC sincronizados · ${r.totals?.inserted ?? 0} novos, ${r.totals?.updated ?? 0} atualizados`,
+      error: (e) => `Erro: ${e.message}`,
+    });
+  };
+
+  const handlePairTransfers = () => {
+    toast.promise(pairTransfers.mutateAsync(), {
+      loading: "Identificando transferências internas…",
+      success: (r) => `${r.paired} movimento(s) vinculado(s) como transferência`,
+      error: (e) => `Erro: ${e.message}`,
+    });
+  };
+
   if (health.isLoading) return <Skeleton className="h-96" />;
   const h = health.data;
 
@@ -144,6 +164,14 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
               {syncStatements.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileText className="size-4" />}
               Sincronizar extratos bancários (OMIE)
             </Button>
+            <Button onClick={handleSyncLancCC} disabled={syncLancCC.isPending} variant="outline" className="w-full justify-start gap-2">
+              {syncLancCC.isPending ? <Loader2 className="size-4 animate-spin" /> : <Banknote className="size-4" />}
+              Sincronizar Lançamentos de Conta Corrente
+            </Button>
+            <Button onClick={handlePairTransfers} disabled={pairTransfers.isPending} variant="outline" className="w-full justify-start gap-2">
+              {pairTransfers.isPending ? <Loader2 className="size-4 animate-spin" /> : <ArrowLeftRight className="size-4" />}
+              Identificar transferências internas
+            </Button>
             <Button onClick={handleSyncCommitments} disabled={syncCommitments.isPending} variant="outline" className="w-full justify-start gap-2">
               {syncCommitments.isPending ? <Loader2 className="size-4 animate-spin" /> : <ShoppingCart className="size-4" />}
               Sincronizar Pedidos de Venda + OCs (OMIE)
@@ -166,6 +194,45 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
           </CardContent>
         </Card>
       </div>
+
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Banknote className="size-4 text-primary" /> Movimentações Bancárias (últimos 90 dias)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="rounded-md border border-border bg-background/40 px-3 py-2.5">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Lançamentos CC</div>
+              <div className="text-lg font-semibold tabular-nums mt-0.5">
+                {(bmSummary.data?.lancCC ?? 0).toLocaleString("pt-BR")}
+              </div>
+            </div>
+            <div className="rounded-md border border-border bg-background/40 px-3 py-2.5">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Transferências internas</div>
+              <div className="text-lg font-semibold tabular-nums mt-0.5">
+                {(bmSummary.data?.transferencias ?? 0).toLocaleString("pt-BR")}
+              </div>
+            </div>
+            <div className="rounded-md border border-border bg-background/40 px-3 py-2.5">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Tarifas / Juros</div>
+              <div className="text-lg font-semibold tabular-nums mt-0.5 text-destructive">
+                {((bmSummary.data?.tarifasValor ?? 0) + (bmSummary.data?.jurosValor ?? 0)).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              </div>
+            </div>
+            <div className="rounded-md border border-border bg-background/40 px-3 py-2.5">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Rendimentos</div>
+              <div className="text-lg font-semibold tabular-nums mt-0.5 text-success">
+                {(bmSummary.data?.rendimentosValor ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground pt-3">
+            Transferências internas não geram fluxo (soma zero). Tarifas e juros classificam como Despesas Financeiras; rendimentos como Receitas Financeiras automaticamente.
+          </p>
+        </CardContent>
+      </Card>
 
       <Card className="bg-card border-border">
         <CardHeader>
