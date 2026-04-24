@@ -5,6 +5,7 @@ export type OmieEndpointKey =
   | "contas_pagar"
   | "contas_receber"
   | "movimentacoes_bancarias"
+  | "lancamentos_cc"
   | "categorias"
   | "centros_de_custo"
   | "clientes"
@@ -117,6 +118,13 @@ export const OMIE_ENDPOINTS: Record<OmieEndpointKey, OmieEndpointDef> = {
     call: "ListarNfse",
     idField: "nCodNF",
   },
+  lancamentos_cc: {
+    key: "lancamentos_cc",
+    label: "Lançamentos de Conta Corrente",
+    endpoint: "financas/contacorrentelancamentos",
+    call: "ListarLancCC",
+    idField: "nCodLanc",
+  },
 };
 
 export const OMIE_PRIORITY_ORDER: OmieEndpointKey[] = [
@@ -133,4 +141,5 @@ export const OMIE_PRIORITY_ORDER: OmieEndpointKey[] = [
   "notas_fiscais_emitidas",
   "notas_servico_emitidas",
   "movimentacoes_bancarias",
+  "lancamentos_cc",
 ];
