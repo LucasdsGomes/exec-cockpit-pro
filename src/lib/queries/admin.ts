@@ -1122,3 +1122,73 @@ export function useProjectsSummary(companyId: string | null | undefined) {
     },
   });
 }
+
+// ---------- Loans / Financings ----------
+
+export function useSyncLoans(companyId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      if (!companyId) throw new Error("Empresa não selecionada");
+      const res = await fetch("/api/public/hooks/omie-sync-now", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          companyId,
+          mode: "incremental",
+          endpoints: ["emprestimos_financiamentos"],
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json() as Promise<{
+        ok: boolean;
+        totals?: { inserted: number; updated: number; errors: number };
+      }>;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["loansSummary", companyId] });
+      qc.invalidateQueries({ queryKey: ["systemHealth", companyId] });
+      qc.invalidateQueries({ queryKey: ["balance", companyId] });
+    },
+  });
+}
+
+export function useLoansSummary(companyId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["loansSummary", companyId],
+    enabled: !!companyId,
+    queryFn: async () => {
+      const { data: balance } = await supabase
+        .from("loans_outstanding_balance" as never)
+        .select("*")
+        .eq("company_id", companyId!)
+        .maybeSingle();
+      const { count: totalLoans } = await supabase
+        .from("loans" as never)
+        .select("id", { count: "exact", head: true })
+        .eq("company_id", companyId!);
+      const b = (balance ?? {}) as {
+        active_loans?: number;
+        total_principal?: number;
+        total_paid?: number;
+        total_outstanding?: number;
+        total_interest?: number;
+        due_next_30d?: number;
+        overdue_amount?: number;
+      };
+      return {
+        totalLoans: totalLoans ?? 0,
+        activeLoans: Number(b.active_loans ?? 0),
+        totalPrincipal: Number(b.total_principal ?? 0),
+        totalPaid: Number(b.total_paid ?? 0),
+        totalOutstanding: Number(b.total_outstanding ?? 0),
+        totalInterest: Number(b.total_interest ?? 0),
+        dueNext30d: Number(b.due_next_30d ?? 0),
+        overdueAmount: Number(b.overdue_amount ?? 0),
+      };
+    },
+  });
+}

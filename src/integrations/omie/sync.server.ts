@@ -885,6 +885,15 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
       case "tags":
         r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: {}, upsert: (item) => upsertTag(item, opts.companyId) });
         break;
+      case "emprestimos_financiamentos":
+        r = await runListEndpoint({
+          key,
+          companyId: opts.companyId,
+          triggeredBy,
+          param: { pagina: 1, registros_por_pagina: 100 },
+          upsert: (item) => upsertLoan(item, opts.companyId),
+        });
+        break;
     }
     results.push(r);
     totalInserted += r.inserted;
@@ -1386,4 +1395,145 @@ async function upsertTag(item: AnyRec, companyId: string) {
   }
   const { error } = await supabaseAdmin.from("tags").insert([payload]);
   return { inserted: error ? 0 : 1, updated: 0, errors: error ? 1 : 0 };
+}
+
+// --- Empréstimos & Financiamentos ---
+
+function mapLoanStatus(s: unknown): "ativo" | "quitado" | "inadimplente" | "renegociado" | "cancelado" {
+  const v = (asString(s) ?? "").toLowerCase();
+  if (v.includes("quit")) return "quitado";
+  if (v.includes("inad")) return "inadimplente";
+  if (v.includes("renego")) return "renegociado";
+  if (v.includes("cancel")) return "cancelado";
+  return "ativo";
+}
+
+function mapLoanKind(s: unknown): "emprestimo" | "financiamento" | "leasing" | "antecipacao" | "capital_giro" | "outro" {
+  const v = (asString(s) ?? "").toLowerCase();
+  if (v.includes("financi")) return "financiamento";
+  if (v.includes("leas")) return "leasing";
+  if (v.includes("antec")) return "antecipacao";
+  if (v.includes("giro")) return "capital_giro";
+  if (v.includes("emprest")) return "emprestimo";
+  return v ? "outro" : "emprestimo";
+}
+
+function mapInstallmentStatus(s: unknown, dueISO: string | null): "previsto" | "pago" | "parcial" | "vencido" | "cancelado" {
+  const v = (asString(s) ?? "").toLowerCase();
+  if (v.includes("pag") && !v.includes("não")) return "pago";
+  if (v.includes("parcial")) return "parcial";
+  if (v.includes("cancel")) return "cancelado";
+  if (dueISO && new Date(dueISO) < new Date()) return "vencido";
+  return "previsto";
+}
+
+async function upsertLoan(item: AnyRec, companyId: string) {
+  const cab = (item["cabecalho"] as AnyRec) ?? item;
+  const code = asString(cab["nCodCtrEmp"] ?? cab["codigo_contrato"] ?? cab["cCodIntCtrEmp"]);
+  if (!code) return { inserted: 0, updated: 0, errors: 0 };
+
+  const principal = asNumber(cab["nValorContrato"] ?? cab["valor_contrato"] ?? 0);
+  const totalParcelas = Number(asString(cab["nTotalParcelas"] ?? cab["total_parcelas"]) ?? "0") || null;
+  const taxa = asNumber(cab["nTaxaJurosMensal"] ?? cab["taxa_juros_mensal"] ?? 0) || null;
+  const contractDate = brDateToISO(cab["dDtContrato"] ?? cab["data_contrato"]);
+  const firstDue = brDateToISO(cab["dDtPrimeiraPrestacao"] ?? cab["data_primeira_prestacao"]);
+  const lastDue = brDateToISO(cab["dDtUltimaPrestacao"] ?? cab["data_ultima_prestacao"]);
+
+  const partySrc = asString(cab["nCodCli"] ?? cab["codigo_cliente_fornecedor"]);
+  let supplier_id: string | null = null;
+  if (partySrc) {
+    const { data } = await supabaseAdmin
+      .from("suppliers").select("id")
+      .eq("company_id", companyId).eq("source_record_id", partySrc).maybeSingle();
+    supplier_id = data?.id ?? null;
+  }
+
+  const bankSrc = asString(cab["nCodCC"] ?? cab["codigo_conta_corrente"]);
+  let bank_account_id: string | null = null;
+  if (bankSrc) {
+    const { data } = await supabaseAdmin
+      .from("bank_accounts").select("id")
+      .eq("company_id", companyId).eq("source_record_id", bankSrc).maybeSingle();
+    bank_account_id = data?.id ?? null;
+  }
+
+  const payload = {
+    company_id: companyId,
+    source_system: "omie",
+    source_endpoint: "financas/contratoemprestimo",
+    source_record_id: code,
+    contract_number: asString(cab["cNumCtrEmp"] ?? cab["numero_contrato"]) ?? code,
+    description: asString(cab["cObservacao"] ?? cab["observacao"] ?? cab["descricao"]),
+    institution: asString(cab["cInstFinanceira"] ?? cab["instituicao_financeira"]),
+    supplier_id,
+    bank_account_id,
+    kind: mapLoanKind(cab["cTipoCtrEmp"] ?? cab["tipo_contrato"]),
+    status: mapLoanStatus(cab["cStatus"] ?? cab["status"]),
+    contract_date: contractDate,
+    first_due_date: firstDue,
+    last_due_date: lastDue,
+    principal_amount: principal,
+    interest_rate_monthly: taxa,
+    total_installments: totalParcelas,
+    metadata: item as never,
+    synced_at: new Date().toISOString(),
+  };
+
+  const { data: existing } = await supabaseAdmin
+    .from("loans").select("id")
+    .eq("company_id", companyId)
+    .eq("source_endpoint", "financas/contratoemprestimo")
+    .eq("source_record_id", code).maybeSingle();
+
+  let loanId: string;
+  let isInsert = false;
+  if (existing) {
+    const { error } = await supabaseAdmin.from("loans").update(payload).eq("id", existing.id);
+    if (error) return { inserted: 0, updated: 0, errors: 1 };
+    loanId = existing.id;
+  } else {
+    const { data, error } = await supabaseAdmin.from("loans").insert([payload]).select("id").single();
+    if (error || !data) return { inserted: 0, updated: 0, errors: 1 };
+    loanId = data.id;
+    isInsert = true;
+  }
+
+  // Upsert installments (parcelas) if present
+  const parcelas = (item["listaParcelas"] as AnyRec[] | undefined) ?? (cab["listaParcelas"] as AnyRec[] | undefined) ?? [];
+  if (Array.isArray(parcelas) && parcelas.length > 0) {
+    let paidCount = 0;
+    let outstanding = 0;
+    for (const p of parcelas) {
+      const num = Number(asString(p["nNumParcela"] ?? p["numero_parcela"]) ?? "0") || 0;
+      if (!num) continue;
+      const due = brDateToISO(p["dDtVencto"] ?? p["data_vencimento"]);
+      if (!due) continue;
+      const amount = asNumber(p["nValorParcela"] ?? p["valor_parcela"] ?? 0);
+      const principalP = asNumber(p["nValorPrincipal"] ?? p["valor_principal"] ?? 0);
+      const interestP = asNumber(p["nValorJuros"] ?? p["valor_juros"] ?? 0);
+      const paid = asNumber(p["nValorPago"] ?? p["valor_pago"] ?? 0);
+      const status = mapInstallmentStatus(p["cStatus"] ?? p["status"], due);
+      if (status === "pago") paidCount += 1;
+      if (status !== "pago" && status !== "cancelado") outstanding += amount - paid;
+
+      await supabaseAdmin.from("loan_installments").upsert({
+        loan_id: loanId,
+        company_id: companyId,
+        installment_number: num,
+        due_date: due,
+        amount,
+        principal_amount: principalP,
+        interest_amount: interestP,
+        paid_amount: paid,
+        paid_at: brDateToISO(p["dDtPagto"] ?? p["data_pagamento"]),
+        status,
+        metadata: p as never,
+      } as never, { onConflict: "loan_id,installment_number" });
+    }
+    await supabaseAdmin.from("loans")
+      .update({ paid_installments: paidCount, outstanding_balance: outstanding })
+      .eq("id", loanId);
+  }
+
+  return { inserted: isInsert ? 1 : 0, updated: isInsert ? 0 : 1, errors: 0 };
 }

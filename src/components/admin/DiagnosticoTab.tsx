@@ -2,9 +2,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Activity, CheckCircle2, AlertTriangle, Clock, Database, Loader2, Wrench, Link2, FileText, GitMerge, ShoppingCart, Receipt, Banknote, ArrowLeftRight, FolderKanban, Tag } from "lucide-react";
+import { Activity, CheckCircle2, AlertTriangle, Clock, Database, Loader2, Wrench, Link2, FileText, GitMerge, ShoppingCart, Receipt, Banknote, ArrowLeftRight, FolderKanban, Tag, Landmark } from "lucide-react";
 import { useSystemHealth, useCronJobs, useBackfillBalance, useMirrorApAr, useBackfillRefs } from "@/lib/queries/health";
-import { useSyncBankStatements, useReconcileBankMovements, useSyncCommercialCommitments, useCommercialCommitmentsSummary, useSyncFiscalDocuments, useFiscalDocumentsSummary, useSyncLancamentosCC, usePairBankTransfers, useBankMovementsSummary, useSyncProjectsAndTags, useLinkEntriesToProjects, useProjectsSummary } from "@/lib/queries/admin";
+import { useSyncBankStatements, useReconcileBankMovements, useSyncCommercialCommitments, useCommercialCommitmentsSummary, useSyncFiscalDocuments, useFiscalDocumentsSummary, useSyncLancamentosCC, usePairBankTransfers, useBankMovementsSummary, useSyncProjectsAndTags, useLinkEntriesToProjects, useProjectsSummary, useSyncLoans, useLoansSummary } from "@/lib/queries/admin";
 import { toast } from "sonner";
 
 function fmt(d: string | null) {
@@ -44,6 +44,8 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
   const syncProjects = useSyncProjectsAndTags(companyId);
   const linkProjects = useLinkEntriesToProjects(companyId);
   const projects = useProjectsSummary(companyId);
+  const syncLoans = useSyncLoans(companyId);
+  const loans = useLoansSummary(companyId);
 
   const handleBackfill = () => {
     toast.promise(backfill.mutateAsync(30), {
@@ -138,6 +140,15 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
     });
   };
 
+  const handleSyncLoans = () => {
+    toast.promise(syncLoans.mutateAsync(), {
+      loading: "Sincronizando contratos de empréstimo (Omie)…",
+      success: (r) =>
+        `Empréstimos · ${r.totals?.inserted ?? 0} novos, ${r.totals?.updated ?? 0} atualizados`,
+      error: (e) => `Erro: ${e.message}`,
+    });
+  };
+
   if (health.isLoading) return <Skeleton className="h-96" />;
   const h = health.data;
 
@@ -199,6 +210,10 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
             <Button onClick={handleLinkProjects} disabled={linkProjects.isPending} variant="outline" className="w-full justify-start gap-2">
               {linkProjects.isPending ? <Loader2 className="size-4 animate-spin" /> : <Link2 className="size-4" />}
               Vincular lançamentos a projetos
+            </Button>
+            <Button onClick={handleSyncLoans} disabled={syncLoans.isPending} variant="outline" className="w-full justify-start gap-2">
+              {syncLoans.isPending ? <Loader2 className="size-4 animate-spin" /> : <Landmark className="size-4" />}
+              Sincronizar Empréstimos & Financiamentos (OMIE)
             </Button>
             <Button onClick={handleSyncCommitments} disabled={syncCommitments.isPending} variant="outline" className="w-full justify-start gap-2">
               {syncCommitments.isPending ? <Loader2 className="size-4 animate-spin" /> : <ShoppingCart className="size-4" />}
@@ -334,6 +349,48 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
           </div>
           <p className="text-xs text-muted-foreground pt-3">
             Pedidos têm peso de 80% e OCs de 90% na projeção de caixa. Quando viram CR/CP, são automaticamente vinculados e ignorados para evitar dupla contagem.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Landmark className="size-4 text-primary" /> Empréstimos & Financiamentos (Omie)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="rounded-md border border-border bg-background/40 px-3 py-2.5">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Contratos ativos</div>
+              <div className="text-lg font-semibold tabular-nums mt-0.5">
+                {(loans.data?.activeLoans ?? 0).toLocaleString("pt-BR")}
+                <span className="text-xs text-muted-foreground font-normal ml-1">
+                  / {(loans.data?.totalLoans ?? 0).toLocaleString("pt-BR")}
+                </span>
+              </div>
+            </div>
+            <div className="rounded-md border border-border bg-background/40 px-3 py-2.5">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Saldo devedor</div>
+              <div className="text-lg font-semibold tabular-nums mt-0.5 text-destructive">
+                {(loans.data?.totalOutstanding ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              </div>
+            </div>
+            <div className="rounded-md border border-border bg-background/40 px-3 py-2.5">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Vence em 30 dias</div>
+              <div className="text-lg font-semibold tabular-nums mt-0.5">
+                {(loans.data?.dueNext30d ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              </div>
+            </div>
+            <div className="rounded-md border border-border bg-background/40 px-3 py-2.5">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Em atraso</div>
+              <div className="text-lg font-semibold tabular-nums mt-0.5 text-destructive">
+                {(loans.data?.overdueAmount ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground pt-3">
+            O saldo devedor das parcelas em aberto é refletido automaticamente na linha "Empréstimos" da Projeção de Balanço, substituindo a entrada manual quando há contratos sincronizados.
           </p>
         </CardContent>
       </Card>

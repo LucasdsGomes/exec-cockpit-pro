@@ -17,7 +17,8 @@ export type OmieEndpointKey =
   | "notas_fiscais_emitidas"
   | "notas_servico_emitidas"
   | "projetos"
-  | "tags";
+  | "tags"
+  | "emprestimos_financiamentos";
 
 export interface OmieEndpointDef {
   key: OmieEndpointKey;
@@ -141,6 +142,13 @@ export const OMIE_ENDPOINTS: Record<OmieEndpointKey, OmieEndpointDef> = {
     call: "ListarCadTags",
     idField: "nCodCadTag",
   },
+  emprestimos_financiamentos: {
+    key: "emprestimos_financiamentos",
+    label: "Empréstimos & Financiamentos",
+    endpoint: "financas/contratoemprestimo",
+    call: "ListarContratosEmprestimo",
+    idField: "nCodCtrEmp",
+  },
 };
 
 export const OMIE_PRIORITY_ORDER: OmieEndpointKey[] = [
@@ -160,4 +168,5 @@ export const OMIE_PRIORITY_ORDER: OmieEndpointKey[] = [
   "notas_servico_emitidas",
   "movimentacoes_bancarias",
   "lancamentos_cc",
+  "emprestimos_financiamentos",
 ];
