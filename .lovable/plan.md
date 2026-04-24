@@ -1,90 +1,101 @@
-# Puxar saldo de cada conta direto do Omie
 
-## Por que hoje não puxa
+# Integração Omie — Pedidos de Venda e Ordens de Compra
 
-Resposta direta: **não puxa porque a integração atual nunca chamou o endpoint de saldo do Omie.** A sincronização cobre 8 endpoints (`contas_pagar`, `contas_receber`, `extrato`, `categorias`, `departamentos`, `clientes`, `fornecedores`, `contacorrente`), mas **nenhum deles retorna saldo**. O `geral/contacorrente` traz só os metadados da conta (nome, banco, agência), não o valor.
+## Objetivo
 
-O saldo inicial usado hoje vem da tabela `initial_balances`, preenchida manualmente na aba **Admin → Saldos Iniciais** (ou semeada com 0 via `seed_initial_balances_from_bank_accounts`). A projeção de caixa (`compute_balance_projection`) parte desse valor manual e soma o líquido do DFC realizado.
+Trazer do Omie os **pedidos de venda** (entradas previstas) e **ordens de compra** (saídas previstas) que ainda não viraram Conta a Receber/Pagar, para enriquecer a **Projeção de Caixa** com compromissos comerciais antecipados.
 
-Isso foi uma decisão de simplicidade inicial — mas o Omie **expõe sim** o saldo atual de cada conta corrente via `financas/saldobancario` (call `ListarPosicaoBancaria`) e snapshot por data via `ListarSaldoBancario`. Dá pra automatizar 100%.
+## Por que isso importa
 
-## O que muda
+Hoje a projeção só enxerga compromissos depois que viram título financeiro (CR/CP). Pedidos aprovados e ordens de compra emitidas geralmente acontecem **15–60 dias antes** disso. Trazê-los aumenta o horizonte e a confiança da projeção.
 
-Adicionar um nono endpoint `saldos_bancarios` no catálogo Omie e consumi-lo a cada sync. O saldo retornado vira a fonte de verdade do caixa, substituindo o input manual de "Caixa / Banco" em `initial_balances`.
+## Escopo
 
-### 1. Novo endpoint Omie
+### 1. Novos endpoints no catálogo Omie
+Adicionar em `src/integrations/omie/endpoints.ts`:
+- `pedidos_venda` → `produtos/pedido` / `ListarPedidos`
+- `ordens_compra` → `produtos/ordemcompra` / `ListarOrdemCompra`
 
-`src/integrations/omie/endpoints.ts`:
-
-```text
-saldos_bancarios:
-  endpoint: "financas/saldobancario"
-  call:     "ListarPosicaoBancaria"
-  idField:  "nCodCC"
-```
-
-Retorna por conta: `nCodCC`, `cCodCCInt`, `nSaldoAtual`, `dDtSaldo`, `nSaldoBloqueado`.
-
-### 2. Nova tabela `bank_balances_snapshots`
+### 2. Nova tabela: `commercial_commitments`
+Tabela única para os dois tipos (pedidos e ordens), análoga a `financial_entries` mas dedicada ao "ainda-não-financeiro":
 
 ```text
-bank_balances_snapshots
-  id              uuid pk
-  company_id      uuid fk companies
-  bank_account_id uuid fk bank_accounts
-  snapshot_date   date         -- data do saldo segundo o Omie
-  balance         numeric      -- nSaldoAtual
-  blocked         numeric      -- nSaldoBloqueado
-  source          text         -- 'omie' | 'manual'
-  synced_at       timestamptz
-  unique (company_id, bank_account_id, snapshot_date)
+commercial_commitments
+├─ id, company_id
+├─ source_system='omie', source_endpoint, source_record_id (único)
+├─ kind: 'pedido_venda' | 'ordem_compra'
+├─ direction: 'entrada' | 'saida'
+├─ status: 'aberto' | 'parcial' | 'faturado' | 'cancelado'
+├─ issue_date (emissão)
+├─ expected_date (previsão de entrega/faturamento)
+├─ amount, amount_signed
+├─ party_id (customer_id ou supplier_id), party_name
+├─ document_number (número do pedido/OC)
+├─ description
+├─ linked_financial_entry_id (quando vira CR/CP)
+├─ confidence_pct (default 80% pedido, 90% OC — ajustável)
+├─ metadata jsonb (raw)
+├─ synced_at, created_at, updated_at
 ```
 
-RLS: `select` para membros da company; `insert/update` só via service role (sync server). Sem políticas de write para client — a UI lê, o sync escreve.
+RLS padrão: `select_member` + `modify_editor` (mesmo padrão das outras tabelas).
 
-### 3. Mapper + sync
+### 3. Mappers e upserts em `sync.server.ts`
+- `mapPedidoVenda(r, companyId, batchId)` → lê `cabecalho` (codigo_pedido, data_previsao, etapa, total_pedido) e `informacoes_adicionais`.
+- `mapOrdemCompra(r, companyId, batchId)` → lê `cabecalho_oc` e `total_oc`.
+- `upsertCommercialCommitment(...)` com resolução de FK (customer/supplier por `source_record_id`).
+- Filtro por etapa: ignorar canceladas (`etapa='99'` no Omie) e marcar como `faturado` quando o pedido tem `codigo_lancamento_omie` populado (já virou CR).
 
-`src/integrations/omie/sync.server.ts`:
-- novo handler `syncSaldosBancarios(companyId)` que chama `ListarPosicaoBancaria`, casa cada `nCodCC` com `bank_accounts.source_record_id`, faz upsert em `bank_balances_snapshots` com `snapshot_date = dDtSaldo` (ou `CURRENT_DATE`).
-- registra batch em `omie_raw_sync_batches` como qualquer outro endpoint.
-- entra na `OMIE_PRIORITY_ORDER` logo depois de `contas_correntes`.
+### 4. Integração na pipeline
+- Adicionar `pedidos_venda` e `ordens_compra` ao `OMIE_PRIORITY_ORDER` **depois** de `clientes`/`fornecedores` e **antes** de `contas_pagar`/`contas_receber`.
+- Incluir cases no `switch` de `runOmieSync` com filtro de período (`filtrar_por_data_de`/`ate` no formato BR).
+- Defaults da janela: mesmo `lookbackDays` da sync atual.
 
-### 4. Projeção de caixa usa o saldo do Omie
+### 5. Atualizar projeção de caixa
+A função `compute_balance_projection` (e `dfc_forecast_base`) hoje só considera `financial_entries` previstos. Vamos:
+- Criar uma **view** `cash_forecast_extended` que une:
+  - `financial_entries` previstos (peso 100%)
+  - `commercial_commitments` abertos não vinculados a CR/CP (peso = `confidence_pct`)
+- Atualizar o cálculo da projeção para usar essa view.
+- Evitar dupla contagem: quando `linked_financial_entry_id` está preenchido, o commitment é ignorado.
 
-Atualizar `public.compute_balance_projection`:
-- em vez de somar `initial_balances` tipo `caixa_banco` + variação do DFC realizado desde sempre,
-- buscar o **snapshot mais recente do Omie ≤ `_date`** em `bank_balances_snapshots` (somando todas as contas ativas da company), e somar **apenas a variação do DFC realizado entre `snapshot_date` e `_date`**.
-- fallback: se não houver snapshot Omie, mantém a lógica atual com `initial_balances` (não quebra empresas sem Omie).
-
-### 5. UI: Saldos Iniciais
-
-Em `src/components/admin/InitialBalancesTab.tsx`:
-- bloco "Caixa / Banco" passa a mostrar o saldo do Omie por conta (read-only, com data do snapshot e botão "Sincronizar agora").
-- linhas `balance_type = 'caixa_banco'` em `initial_balances` ficam desabilitadas para edição quando há snapshot Omie da mesma conta — com aviso "Saldo vindo do Omie. Edite para sobrescrever."
-- demais tipos (estoque, imobilizado, capital, etc.) continuam manuais como hoje.
-
-### 6. Cron diário
-
-`run_daily_pipeline_all` já existe — adicionar chamada ao novo endpoint de saldos antes de `compute_balance_projection`. Sem nova infra de cron.
-
-## Arquivos editados
-
-- `src/integrations/omie/endpoints.ts` — adiciona `saldos_bancarios`.
-- `src/integrations/omie/sync.server.ts` — handler + mapper + upsert.
-- **Migração SQL** — tabela `bank_balances_snapshots` + RLS + atualização de `compute_balance_projection`.
-- `src/lib/queries/admin.ts` — hook `useBankBalanceSnapshots(companyId)`.
-- `src/components/admin/InitialBalancesTab.tsx` — exibir snapshots Omie e desabilitar edição manual quando houver.
-- (opcional) `src/utils/omie.functions.ts` — server fn `syncBankBalancesNow` para botão manual.
+### 6. UI — Aba Diagnóstico e KPIs
+- Em **Admin → Diagnóstico**, adicionar os dois novos endpoints na lista de sync (com botões "Sincronizar agora" individuais).
+- Em **Fluxo de Caixa / Projeção**, adicionar um toggle **"Incluir pedidos e OCs"** (default ligado) e uma legenda mostrando quanto da projeção vem de commitments vs. CR/CP.
+- Drill-down: ao clicar num dia da projeção, listar separadamente "Títulos financeiros" e "Compromissos comerciais".
 
 ## Detalhes técnicos
 
-- O Omie tem **rate limit por call** (4/seg). `ListarPosicaoBancaria` retorna todas as contas em uma chamada paginada — sem custo significativo.
-- Se uma conta no Omie não tiver match em `bank_accounts.source_record_id` (raro, só se sync de `contas_correntes` ainda não rodou), pula com warning em `omie_sync_logs`.
-- A coluna `bank_accounts.current_balance` que existe hoje (se existir) **não é tocada** — o saldo vive em `bank_balances_snapshots` por dia, dando histórico para gráficos futuros.
-- Sem mudanças em DRE, DFC, KPIs ou outras telas. Apenas a projeção de balanço/caixa fica mais precisa.
+**Endpoints Omie usados:**
+- `POST /produtos/pedido/` call=`ListarPedidos`, paginação padrão (`pagina`, `registros_por_pagina`).
+- `POST /produtos/ordemcompra/` call=`ListarOrdemCompra`, paginação padrão.
+
+**Conversão de status Omie → nosso enum** (mapa em `mapPedidoVenda`):
+- etapa `10/20/50/60` → `aberto`
+- etapa `70` (faturado parcial) → `parcial`
+- etapa `80` (faturado) → `faturado`
+- etapa `90/99` → `cancelado`
+
+**Migração SQL:**
+1. CREATE TABLE `commercial_commitments` + índices em `(company_id, expected_date)`, `(company_id, kind, status)`, único em `(company_id, source_endpoint, source_record_id)`.
+2. RLS policies.
+3. CREATE OR REPLACE VIEW `cash_forecast_extended`.
+4. CREATE OR REPLACE FUNCTION `compute_balance_projection` para usar a view.
+
+**Arquivos a editar:**
+- `src/integrations/omie/endpoints.ts` (catálogo)
+- `src/integrations/omie/sync.server.ts` (mappers + runners + switch)
+- `src/components/admin/DiagnosticoTab.tsx` (UI sync)
+- `src/lib/queries/dfc.ts` + `src/routes/_app.fluxo-de-caixa.tsx` (toggle e drill-down)
+- Nova migração SQL
 
 ## Fora de escopo
 
-- Importar histórico completo de saldos passados do Omie (a API retorna só atual + por data específica — exigiria varredura dia-a-dia).
-- Conciliação automática de divergência entre saldo Omie e DFC calculado (fica como insight visual em iteração futura).
-- Substituir saldos não-bancários (estoque, imobilizado, etc.) — esses não existem no Omie financeiro.
+- Itens do pedido (linha-a-linha de produtos) — só capturamos o cabeçalho/total.
+- Notas Fiscais Emitidas (NF-e) — fica para a próxima fase ("fechamento contábil").
+- Edição manual de commitments na UI (somente leitura nesta versão).
+- Conciliação automática entre pedido → CR (faremos por `linked_financial_entry_id` quando o Omie já populou; reconciliação fuzzy fica para depois).
+
+## Próximo passo após aprovação
+
+Executo na ordem: migração SQL → endpoints/sync → DiagnósticoTab → projeção/UI. Depois você roda um sync manual em Admin → Diagnóstico para popular.

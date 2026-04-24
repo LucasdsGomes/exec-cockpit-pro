@@ -2,9 +2,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Activity, CheckCircle2, AlertTriangle, Clock, Database, Loader2, Wrench, Link2, FileText, GitMerge } from "lucide-react";
+import { Activity, CheckCircle2, AlertTriangle, Clock, Database, Loader2, Wrench, Link2, FileText, GitMerge, ShoppingCart } from "lucide-react";
 import { useSystemHealth, useCronJobs, useBackfillBalance, useMirrorApAr, useBackfillRefs } from "@/lib/queries/health";
-import { useSyncBankStatements, useReconcileBankMovements } from "@/lib/queries/admin";
+import { useSyncBankStatements, useReconcileBankMovements, useSyncCommercialCommitments, useCommercialCommitmentsSummary } from "@/lib/queries/admin";
 import { toast } from "sonner";
 
 function fmt(d: string | null) {
@@ -34,6 +34,8 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
   const refs = useBackfillRefs(companyId);
   const syncStatements = useSyncBankStatements(companyId);
   const reconcile = useReconcileBankMovements(companyId);
+  const syncCommitments = useSyncCommercialCommitments(companyId);
+  const commitments = useCommercialCommitmentsSummary(companyId);
 
   const handleBackfill = () => {
     toast.promise(backfill.mutateAsync(30), {
@@ -72,6 +74,15 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
     toast.promise(reconcile.mutateAsync(), {
       loading: "Conciliando movimentos com títulos…",
       success: (r) => `${r.matched} movimento(s) conciliado(s)`,
+      error: (e) => `Erro: ${e.message}`,
+    });
+  };
+
+  const handleSyncCommitments = () => {
+    toast.promise(syncCommitments.mutateAsync(90), {
+      loading: "Sincronizando Pedidos de Venda e Ordens de Compra (últimos 90 dias)…",
+      success: (r) =>
+        `Compromissos sincronizados · ${r.totals?.inserted ?? 0} novos, ${r.totals?.updated ?? 0} atualizados`,
       error: (e) => `Erro: ${e.message}`,
     });
   };
@@ -122,6 +133,10 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
               {syncStatements.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileText className="size-4" />}
               Sincronizar extratos bancários (OMIE)
             </Button>
+            <Button onClick={handleSyncCommitments} disabled={syncCommitments.isPending} variant="outline" className="w-full justify-start gap-2">
+              {syncCommitments.isPending ? <Loader2 className="size-4 animate-spin" /> : <ShoppingCart className="size-4" />}
+              Sincronizar Pedidos de Venda + OCs (OMIE)
+            </Button>
             <Button onClick={handleReconcile} disabled={reconcile.isPending} variant="outline" className="w-full justify-start gap-2">
               {reconcile.isPending ? <Loader2 className="size-4 animate-spin" /> : <GitMerge className="size-4" />}
               Conciliar movimentos ↔ títulos
@@ -136,6 +151,45 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
           </CardContent>
         </Card>
       </div>
+
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <ShoppingCart className="size-4 text-primary" /> Compromissos Comerciais (Omie)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="rounded-md border border-border bg-background/40 px-3 py-2.5">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Pedidos abertos</div>
+              <div className="text-lg font-semibold tabular-nums mt-0.5">
+                {(commitments.data?.openPedidos ?? 0).toLocaleString("pt-BR")}
+              </div>
+            </div>
+            <div className="rounded-md border border-border bg-background/40 px-3 py-2.5">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">OCs abertas</div>
+              <div className="text-lg font-semibold tabular-nums mt-0.5">
+                {(commitments.data?.openOcs ?? 0).toLocaleString("pt-BR")}
+              </div>
+            </div>
+            <div className="rounded-md border border-border bg-background/40 px-3 py-2.5">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Entradas previstas (ponderado)</div>
+              <div className="text-lg font-semibold tabular-nums mt-0.5 text-success">
+                {(commitments.data?.weightedPedidos ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              </div>
+            </div>
+            <div className="rounded-md border border-border bg-background/40 px-3 py-2.5">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Saídas previstas (ponderado)</div>
+              <div className="text-lg font-semibold tabular-nums mt-0.5 text-destructive">
+                {(commitments.data?.weightedOcs ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground pt-3">
+            Pedidos têm peso de 80% e OCs de 90% na projeção de caixa. Quando viram CR/CP, são automaticamente vinculados e ignorados para evitar dupla contagem.
+          </p>
+        </CardContent>
+      </Card>
 
       <Card className="bg-card border-border">
         <CardHeader>

@@ -1,0 +1,1 @@
+ALTER VIEW public.cash_forecast_extended SET (security_invoker = true);

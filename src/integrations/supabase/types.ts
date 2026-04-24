@@ -776,6 +776,87 @@ export type Database = {
           },
         ]
       }
+      commercial_commitments: {
+        Row: {
+          amount: number
+          amount_signed: number
+          company_id: string
+          confidence_pct: number
+          created_at: string
+          customer_id: string | null
+          description: string | null
+          direction: Database["public"]["Enums"]["entry_direction"]
+          document_number: string | null
+          expected_date: string | null
+          id: string
+          imported_batch_id: string | null
+          issue_date: string | null
+          kind: Database["public"]["Enums"]["commitment_kind"]
+          linked_financial_entry_id: string | null
+          metadata: Json
+          party_name: string | null
+          source_endpoint: string
+          source_record_id: string
+          source_system: string
+          status: Database["public"]["Enums"]["commitment_status"]
+          supplier_id: string | null
+          synced_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount?: number
+          amount_signed?: number
+          company_id: string
+          confidence_pct?: number
+          created_at?: string
+          customer_id?: string | null
+          description?: string | null
+          direction: Database["public"]["Enums"]["entry_direction"]
+          document_number?: string | null
+          expected_date?: string | null
+          id?: string
+          imported_batch_id?: string | null
+          issue_date?: string | null
+          kind: Database["public"]["Enums"]["commitment_kind"]
+          linked_financial_entry_id?: string | null
+          metadata?: Json
+          party_name?: string | null
+          source_endpoint: string
+          source_record_id: string
+          source_system?: string
+          status?: Database["public"]["Enums"]["commitment_status"]
+          supplier_id?: string | null
+          synced_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          amount_signed?: number
+          company_id?: string
+          confidence_pct?: number
+          created_at?: string
+          customer_id?: string | null
+          description?: string | null
+          direction?: Database["public"]["Enums"]["entry_direction"]
+          document_number?: string | null
+          expected_date?: string | null
+          id?: string
+          imported_batch_id?: string | null
+          issue_date?: string | null
+          kind?: Database["public"]["Enums"]["commitment_kind"]
+          linked_financial_entry_id?: string | null
+          metadata?: Json
+          party_name?: string | null
+          source_endpoint?: string
+          source_record_id?: string
+          source_system?: string
+          status?: Database["public"]["Enums"]["commitment_status"]
+          supplier_id?: string | null
+          synced_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       companies: {
         Row: {
           active: boolean
@@ -2488,6 +2569,26 @@ export type Database = {
       }
     }
     Views: {
+      cash_forecast_extended: {
+        Row: {
+          amount: number | null
+          amount_signed: number | null
+          bank_account_id: string | null
+          category_mapped: string | null
+          company_id: string | null
+          confidence_pct: number | null
+          description: string | null
+          dfc_group: string | null
+          dfc_subgroup: string | null
+          direction: Database["public"]["Enums"]["entry_direction"] | null
+          document_number: string | null
+          forecast_date: string | null
+          source_id: string | null
+          source_kind: string | null
+          weighted_amount_signed: number | null
+        }
+        Relationships: []
+      }
       v_budget_vs_actual: {
         Row: {
           actual_amount: number | null
@@ -2753,6 +2854,8 @@ export type Database = {
     Enums: {
       app_role: "admin" | "finance" | "controller" | "viewer"
       budget_scenario: "orcado" | "realizado" | "reprojetado"
+      commitment_kind: "pedido_venda" | "ordem_compra"
+      commitment_status: "aberto" | "parcial" | "faturado" | "cancelado"
       entry_direction: "entrada" | "saida"
       entry_status: "previsto" | "realizado" | "cancelado" | "parcial"
       flow_type: "operacional" | "investimento" | "financiamento"
@@ -2886,6 +2989,8 @@ export const Constants = {
     Enums: {
       app_role: ["admin", "finance", "controller", "viewer"],
       budget_scenario: ["orcado", "realizado", "reprojetado"],
+      commitment_kind: ["pedido_venda", "ordem_compra"],
+      commitment_status: ["aberto", "parcial", "faturado", "cancelado"],
       entry_direction: ["entrada", "saida"],
       entry_status: ["previsto", "realizado", "cancelado", "parcial"],
       flow_type: ["operacional", "investimento", "financiamento"],

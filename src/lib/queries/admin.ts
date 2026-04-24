@@ -472,6 +472,68 @@ export function useSyncBankStatements(companyId: string | null | undefined) {
   });
 }
 
+export function useSyncCommercialCommitments(companyId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (lookbackDays: number = 90) => {
+      if (!companyId) throw new Error("Empresa não selecionada");
+      const res = await fetch("/api/public/hooks/omie-sync-now", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          companyId,
+          lookbackDays,
+          mode: "incremental",
+          endpoints: ["pedidos_venda", "ordens_compra"],
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json() as Promise<{
+        ok: boolean;
+        totals?: { inserted: number; updated: number; errors: number };
+      }>;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["syncBatches", companyId] });
+      qc.invalidateQueries({ queryKey: ["syncLogs", companyId] });
+      qc.invalidateQueries({ queryKey: ["systemHealth", companyId] });
+      qc.invalidateQueries({ queryKey: ["commercialCommitments", companyId] });
+    },
+  });
+}
+
+export function useCommercialCommitmentsSummary(companyId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["commercialCommitments", companyId],
+    enabled: !!companyId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("commercial_commitments")
+        .select("kind, status, amount, confidence_pct, linked_financial_entry_id")
+        .eq("company_id", companyId!);
+      if (error) throw error;
+      const rows = data ?? [];
+      const open = rows.filter(
+        (r) => (r.status === "aberto" || r.status === "parcial") && !r.linked_financial_entry_id,
+      );
+      const sum = (kind: "pedido_venda" | "ordem_compra") =>
+        open
+          .filter((r) => r.kind === kind)
+          .reduce((acc, r) => acc + Number(r.amount) * Number(r.confidence_pct) / 100, 0);
+      return {
+        total: rows.length,
+        openPedidos: open.filter((r) => r.kind === "pedido_venda").length,
+        openOcs: open.filter((r) => r.kind === "ordem_compra").length,
+        weightedPedidos: sum("pedido_venda"),
+        weightedOcs: sum("ordem_compra"),
+      };
+    },
+  });
+}
+
 export function useBankAccounts(companyId: string | null | undefined) {
   return useQuery({
     queryKey: ["bankAccounts", companyId],

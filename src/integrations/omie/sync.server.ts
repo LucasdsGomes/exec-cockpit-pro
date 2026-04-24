@@ -195,6 +195,171 @@ function mapMovimento(r: AnyRec, companyId: string) {
   };
 }
 
+// --- Commercial commitments (pedidos de venda / ordens de compra) ---
+
+type CommitmentKind = "pedido_venda" | "ordem_compra";
+type CommitmentStatus = "aberto" | "parcial" | "faturado" | "cancelado";
+
+function mapEtapaToStatus(etapa: string | null): CommitmentStatus {
+  const e = (etapa ?? "").trim();
+  if (e === "80") return "faturado";
+  if (e === "70") return "parcial";
+  if (e === "90" || e === "99") return "cancelado";
+  return "aberto";
+}
+
+interface CommitmentRecord {
+  company_id: string;
+  source_endpoint: string;
+  source_record_id: string | null;
+  imported_batch_id: string;
+  kind: CommitmentKind;
+  direction: "entrada" | "saida";
+  status: CommitmentStatus;
+  issue_date: string | null;
+  expected_date: string | null;
+  amount: number;
+  amount_signed: number;
+  party_name: string | null;
+  document_number: string | null;
+  description: string | null;
+  confidence_pct: number;
+  metadata: Record<string, unknown>;
+  _party_src: string | null;
+  _has_linked: boolean;
+}
+
+function mapPedidoVenda(r: AnyRec, companyId: string, batchId: string): CommitmentRecord {
+  const cab = (r["cabecalho"] as AnyRec) ?? {};
+  const total = (r["total_pedido"] as AnyRec) ?? {};
+  const info = (r["informacoes_adicionais"] as AnyRec) ?? {};
+  const codigoPedido = asString(cab["codigo_pedido"] ?? cab["codigo_pedido_integracao"]);
+  const numeroPedido = asString(cab["numero_pedido"] ?? codigoPedido);
+  const etapa = asString(cab["etapa"] ?? info["etapa"]);
+  const status = mapEtapaToStatus(etapa);
+  const dataPrev = brDateToISO(cab["data_previsao"] ?? info["data_previsao"]);
+  const dataEmissao = brDateToISO(cab["data_previsao_entrega"] ?? info["data_inclusao"] ?? cab["data_inclusao"]);
+  const valor = asNumber(total["valor_total_pedido"] ?? total["valor_mercadorias"] ?? 0);
+  const partySrc = asString(cab["codigo_cliente"]);
+  const codLanc = asString(cab["codigo_lancamento_omie"] ?? info["codigo_lancamento_omie"]);
+  return {
+    company_id: companyId,
+    source_endpoint: "produtos/pedido",
+    source_record_id: codigoPedido,
+    imported_batch_id: batchId,
+    kind: "pedido_venda",
+    direction: "entrada",
+    status,
+    issue_date: dataEmissao,
+    expected_date: dataPrev,
+    amount: Math.abs(valor),
+    amount_signed: Math.abs(valor),
+    party_name: partySrc,
+    document_number: numeroPedido,
+    description: asString(info["observacoes"] ?? cab["observacoes"]) ?? `Pedido ${numeroPedido ?? ""}`.trim(),
+    confidence_pct: 80,
+    metadata: r as Record<string, unknown>,
+    _party_src: partySrc,
+    _has_linked: !!codLanc,
+  };
+}
+
+function mapOrdemCompra(r: AnyRec, companyId: string, batchId: string): CommitmentRecord {
+  const cab = (r["cabecalho"] as AnyRec) ?? (r["cabecalho_oc"] as AnyRec) ?? {};
+  const total = (r["total_ordem_compra"] as AnyRec) ?? (r["total_oc"] as AnyRec) ?? {};
+  const info = (r["informacoes_adicionais"] as AnyRec) ?? {};
+  const codigo = asString(cab["codigo_ordem_compra"] ?? cab["codigo_ordemcompra"] ?? cab["codigo_oc_integracao"]);
+  const numero = asString(cab["numero_ordem_compra"] ?? cab["numero_oc"] ?? codigo);
+  const etapa = asString(cab["etapa"] ?? info["etapa"]);
+  const status = mapEtapaToStatus(etapa);
+  const dataPrev = brDateToISO(cab["data_previsao"] ?? cab["data_previsao_entrega"] ?? info["data_previsao"]);
+  const dataEmissao = brDateToISO(cab["data_inclusao"] ?? info["data_inclusao"]);
+  const valor = asNumber(total["valor_total_ordem_compra"] ?? total["valor_total_oc"] ?? total["valor_mercadorias"] ?? 0);
+  const partySrc = asString(cab["codigo_fornecedor"] ?? cab["codigo_cliente"]);
+  const codLanc = asString(cab["codigo_lancamento_omie"] ?? info["codigo_lancamento_omie"]);
+  return {
+    company_id: companyId,
+    source_endpoint: "produtos/ordemcompra",
+    source_record_id: codigo,
+    imported_batch_id: batchId,
+    kind: "ordem_compra",
+    direction: "saida",
+    status,
+    issue_date: dataEmissao,
+    expected_date: dataPrev,
+    amount: Math.abs(valor),
+    amount_signed: -Math.abs(valor),
+    party_name: partySrc,
+    document_number: numero,
+    description: asString(info["observacoes"] ?? cab["observacoes"]) ?? `OC ${numero ?? ""}`.trim(),
+    confidence_pct: 90,
+    metadata: r as Record<string, unknown>,
+    _party_src: partySrc,
+    _has_linked: !!codLanc,
+  };
+}
+
+async function upsertCommitment(record: CommitmentRecord) {
+  if (!record.source_record_id) return { inserted: 0, updated: 0, errors: 0 };
+  const { _party_src, _has_linked, metadata, ...base } = record;
+
+  let customer_id: string | null = null;
+  let supplier_id: string | null = null;
+  let linked_financial_entry_id: string | null = null;
+
+  if (_party_src) {
+    if (record.kind === "pedido_venda") {
+      const { data } = await supabaseAdmin
+        .from("customers").select("id")
+        .eq("company_id", record.company_id).eq("source_record_id", _party_src).maybeSingle();
+      customer_id = data?.id ?? null;
+    } else {
+      const { data } = await supabaseAdmin
+        .from("suppliers").select("id")
+        .eq("company_id", record.company_id).eq("source_record_id", _party_src).maybeSingle();
+      supplier_id = data?.id ?? null;
+    }
+  }
+
+  // Tenta vincular ao lançamento financeiro se já existe
+  if (_has_linked || record.status === "faturado") {
+    const expectedEndpoint = record.kind === "pedido_venda" ? "financas/contareceber" : "financas/contapagar";
+    const { data } = await supabaseAdmin
+      .from("financial_entries").select("id")
+      .eq("company_id", record.company_id)
+      .eq("source_endpoint", expectedEndpoint)
+      .eq("document_number", record.document_number ?? "")
+      .maybeSingle();
+    linked_financial_entry_id = data?.id ?? null;
+  }
+
+  const enriched = {
+    ...base,
+    source_record_id: base.source_record_id as string,
+    customer_id,
+    supplier_id,
+    linked_financial_entry_id,
+    metadata: metadata as never,
+    source_system: "omie",
+    synced_at: new Date().toISOString(),
+  };
+
+  const { data: existing } = await supabaseAdmin
+    .from("commercial_commitments").select("id")
+    .eq("company_id", enriched.company_id)
+    .eq("source_endpoint", enriched.source_endpoint)
+    .eq("source_record_id", enriched.source_record_id!)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabaseAdmin
+      .from("commercial_commitments").update(enriched).eq("id", existing.id);
+    return { inserted: 0, updated: error ? 0 : 1, errors: error ? 1 : 0 };
+  }
+  const { error } = await supabaseAdmin.from("commercial_commitments").insert([enriched]);
+  return { inserted: error ? 0 : 1, updated: 0, errors: error ? 1 : 0 };
+}
+
 // --- Endpoint runners ---
 
 async function runListEndpoint(opts: {
@@ -462,6 +627,24 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
         r = await runBankBalancesSync({
           companyId: opts.companyId,
           triggeredBy,
+        });
+        break;
+      case "pedidos_venda":
+        r = await runListEndpoint({
+          key,
+          companyId: opts.companyId,
+          triggeredBy,
+          param: periodFilter,
+          upsert: (item, batchId) => upsertCommitment(mapPedidoVenda(item, opts.companyId, batchId)),
+        });
+        break;
+      case "ordens_compra":
+        r = await runListEndpoint({
+          key,
+          companyId: opts.companyId,
+          triggeredBy,
+          param: periodFilter,
+          upsert: (item, batchId) => upsertCommitment(mapOrdemCompra(item, opts.companyId, batchId)),
         });
         break;
     }
