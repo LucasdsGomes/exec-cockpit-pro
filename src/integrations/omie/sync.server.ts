@@ -1151,3 +1151,176 @@ async function runBankBalancesSync(opts: {
 
   return { key: "saldos_bancarios", batchId, inserted, updated, errors, durationMs: Date.now() - start };
 }
+// --- Lançamentos de Conta Corrente (financas/contacorrentelancamentos) ---
+
+type BankMovementKind = "extrato" | "lancamento_cc" | "transferencia" | "tarifa" | "juros" | "rendimento" | "manual" | "outro";
+
+function inferKindFromText(desc: string | null, codeOp: string | null): BankMovementKind {
+  const s = `${desc ?? ""} ${codeOp ?? ""}`.toLowerCase();
+  if (/transf/.test(s)) return "transferencia";
+  if (/(tarifa|tar\.|cesta|pacote|manuten[cç][aã]o|iof)/.test(s)) return "tarifa";
+  if (/(juro|multa|encargo)/.test(s)) return "juros";
+  if (/(rendimento|cdb|aplica|resgate|poupan)/.test(s)) return "rendimento";
+  return "lancamento_cc";
+}
+
+interface LancCCRecord {
+  company_id: string;
+  bank_account_id: string;
+  source_endpoint: string;
+  source_record_id: string;
+  movement_date: string;
+  amount: number;
+  direction: "entrada" | "saida";
+  description: string | null;
+  document_number: string | null;
+  category_raw: string | null;
+  kind: BankMovementKind;
+  metadata: Record<string, unknown>;
+}
+
+function mapLancCC(item: AnyRec, companyId: string, bankAccountId: string): LancCCRecord | null {
+  const id = asString(item["nCodLanc"] ?? item["codigo_lancamento"] ?? item["nIdLancCC"]);
+  if (!id) return null;
+  const valor = asNumber(item["nValorLancto"] ?? item["valor_lancamento"] ?? item["nValor"] ?? 0);
+  const tipo = String(item["cCodTipo"] ?? item["cTipoOperacao"] ?? item["tipo_operacao"] ?? "").toUpperCase();
+  const direction: "entrada" | "saida" = tipo === "D" || tipo === "DEB"
+    ? "saida"
+    : tipo === "C" || tipo === "CRE"
+      ? "entrada"
+      : (valor >= 0 ? "entrada" : "saida");
+  const desc = asString(item["cObservacao"] ?? item["cDescLancto"] ?? item["descricao"]);
+  const codeOp = asString(item["cCodTipo"] ?? item["cCodCateg"]);
+  const kind = inferKindFromText(desc, codeOp);
+  return {
+    company_id: companyId,
+    bank_account_id: bankAccountId,
+    source_endpoint: "financas/contacorrentelancamentos",
+    source_record_id: id,
+    movement_date: brDateToISO(item["dDtLancto"] ?? item["data_lancamento"]) ?? new Date().toISOString().slice(0, 10),
+    amount: Math.abs(valor),
+    direction,
+    description: desc,
+    document_number: asString(item["cNumDocumento"] ?? item["numero_documento"]),
+    category_raw: asString(item["cCodCateg"] ?? item["codigo_categoria"]),
+    kind,
+    metadata: item,
+  };
+}
+
+async function upsertLancCC(rec: LancCCRecord) {
+  const { data: existing } = await supabaseAdmin
+    .from("bank_movements").select("id")
+    .eq("company_id", rec.company_id)
+    .eq("source_endpoint", rec.source_endpoint)
+    .eq("source_record_id", rec.source_record_id)
+    .maybeSingle();
+  const payload = { ...rec, metadata: rec.metadata as never, synced_at: new Date().toISOString() };
+  if (existing) {
+    const { error } = await supabaseAdmin.from("bank_movements").update(payload).eq("id", existing.id);
+    return { inserted: 0, updated: error ? 0 : 1, errors: error ? 1 : 0 };
+  }
+  const { error } = await supabaseAdmin.from("bank_movements").insert([payload]);
+  return { inserted: error ? 0 : 1, updated: 0, errors: error ? 1 : 0 };
+}
+
+async function runLancamentosCCSync(opts: {
+  companyId: string;
+  triggeredBy: string | null;
+  startDate?: string;
+  endDate?: string;
+  bankAccountId?: string | null;
+}): Promise<SyncRunResult["endpoints"][number]> {
+  const def = OMIE_ENDPOINTS.lancamentos_cc;
+  const start = Date.now();
+  const today = new Date();
+  const dStart = opts.startDate ? new Date(opts.startDate) : new Date(today.getTime() - 90 * 86_400_000);
+  const dEnd = opts.endDate ? new Date(opts.endDate) : today;
+  const fmt = (d: Date) => `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+
+  const batchId = await startBatch(opts.companyId, def.endpoint, opts.triggeredBy, {
+    call: def.call,
+    range: { from: fmt(dStart), to: fmt(dEnd) },
+  });
+  await logToDb(opts.companyId, batchId, "info", "Iniciando lançamentos CC", def.endpoint, {});
+
+  let inserted = 0, updated = 0, errors = 0, total = 0;
+  try {
+    let q = supabaseAdmin
+      .from("bank_accounts")
+      .select("id, source_record_id")
+      .eq("company_id", opts.companyId)
+      .eq("active", true);
+    if (opts.bankAccountId) q = q.eq("id", opts.bankAccountId);
+    const { data: accounts } = await q;
+    const list = (accounts ?? []).filter((a) => a.source_record_id);
+
+    for (const acc of list) {
+      const ncod = Number(acc.source_record_id);
+      if (!Number.isFinite(ncod)) continue;
+      try {
+        for await (const page of paginateOmie<AnyRec>({
+          endpoint: def.endpoint,
+          call: def.call,
+          param: {
+            nCodCC: ncod,
+            dDtInicial: fmt(dStart),
+            dDtFinal: fmt(dEnd),
+          },
+          pageKey: "nPagina",
+          pageSizeKey: "nRegPorPagina",
+          totalPagesKey: "nTotPaginas",
+          pageSize: 200,
+          maxPages: 50,
+        })) {
+          if (!page.ok) {
+            errors += 1;
+            await recordError(opts.companyId, batchId, def.endpoint, page.error, { acc: acc.id });
+            break;
+          }
+          await supabaseAdmin.from("omie_raw_payloads").insert({
+            company_id: opts.companyId,
+            batch_id: batchId,
+            source_endpoint: def.endpoint,
+            source_record_id: `acc:${acc.source_record_id}:page:${page.page}`,
+            payload: page.raw as never,
+          });
+          for (const item of page.items) {
+            total += 1;
+            try {
+              const rec = mapLancCC(item, opts.companyId, acc.id);
+              if (!rec) continue;
+              const r = await upsertLancCC(rec);
+              inserted += r.inserted;
+              updated += r.updated;
+              errors += r.errors;
+            } catch (e) {
+              errors += 1;
+              await recordError(opts.companyId, batchId, def.endpoint, e instanceof Error ? e.message : String(e), item);
+            }
+          }
+        }
+      } catch (e) {
+        errors += 1;
+        await recordError(opts.companyId, batchId, def.endpoint, e instanceof Error ? e.message : String(e), { acc: acc.id });
+      }
+    }
+
+    // Pair internal transfers after ingest
+    try {
+      await supabaseAdmin.rpc("pair_bank_transfers", { _company: opts.companyId });
+    } catch (e) {
+      logCtx("warn", "pair_bank_transfers failed", { error: e instanceof Error ? e.message : String(e) });
+    }
+
+    const status = errors === 0 ? "success" : (inserted + updated > 0 ? "partial" : "error");
+    await finishBatch(batchId, status, inserted + updated, errors, total);
+    await logToDb(opts.companyId, batchId, "info", "Lançamentos CC concluído", def.endpoint, { inserted, updated, errors, total });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    await recordError(opts.companyId, batchId, def.endpoint, msg, null);
+    await finishBatch(batchId, "error", inserted + updated, errors + 1, total);
+    await logToDb(opts.companyId, batchId, "error", `Falha lançamentos CC: ${msg}`, def.endpoint, {});
+  }
+  return { key: "lancamentos_cc", batchId, inserted, updated, errors, durationMs: Date.now() - start };
+}
