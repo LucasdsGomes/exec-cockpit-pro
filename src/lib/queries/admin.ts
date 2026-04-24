@@ -534,6 +534,77 @@ export function useCommercialCommitmentsSummary(companyId: string | null | undef
   });
 }
 
+// ---------- Fiscal documents (NF-e / NFS-e) ----------
+
+export function useSyncFiscalDocuments(companyId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (lookbackDays: number = 90) => {
+      if (!companyId) throw new Error("Empresa não selecionada");
+      const res = await fetch("/api/public/hooks/omie-sync-now", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          companyId,
+          lookbackDays,
+          mode: "incremental",
+          endpoints: ["notas_fiscais_emitidas", "notas_servico_emitidas"],
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json() as Promise<{
+        ok: boolean;
+        totals?: { inserted: number; updated: number; errors: number };
+      }>;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["syncBatches", companyId] });
+      qc.invalidateQueries({ queryKey: ["syncLogs", companyId] });
+      qc.invalidateQueries({ queryKey: ["systemHealth", companyId] });
+      qc.invalidateQueries({ queryKey: ["fiscalDocuments", companyId] });
+    },
+  });
+}
+
+export function useFiscalDocumentsSummary(companyId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["fiscalDocuments", companyId],
+    enabled: !!companyId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("fiscal_documents")
+        .select("doc_type, status, amount_net, amount_iss, amount_pis, amount_cofins, amount_icms, competence_date")
+        .eq("company_id", companyId!)
+        .gte("competence_date", new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10));
+      if (error) throw error;
+      const rows = data ?? [];
+      const authorized = rows.filter((r) => r.status === "autorizada");
+      const nfe = authorized.filter((r) => r.doc_type === "nfe_emitida");
+      const nfse = authorized.filter((r) => r.doc_type === "nfse_emitida");
+      const sumNet = (arr: typeof rows) => arr.reduce((a, r) => a + Number(r.amount_net ?? 0), 0);
+      const sumTax = (arr: typeof rows) =>
+        arr.reduce(
+          (a, r) =>
+            a +
+            Number(r.amount_iss ?? 0) +
+            Number(r.amount_pis ?? 0) +
+            Number(r.amount_cofins ?? 0) +
+            Number(r.amount_icms ?? 0),
+          0,
+        );
+      return {
+        nfeCount: nfe.length,
+        nfseCount: nfse.length,
+        revenueNet90d: sumNet(authorized),
+        taxes90d: sumTax(authorized),
+      };
+    },
+  });
+}
+
 export function useBankAccounts(companyId: string | null | undefined) {
   return useQuery({
     queryKey: ["bankAccounts", companyId],
