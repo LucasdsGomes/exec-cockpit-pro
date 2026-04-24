@@ -1,68 +1,90 @@
+# Puxar saldo de cada conta direto do Omie
 
+## Por que hoje não puxa
 
-# Login mobile + restrição de domínios + recuperação de senha
+Resposta direta: **não puxa porque a integração atual nunca chamou o endpoint de saldo do Omie.** A sincronização cobre 8 endpoints (`contas_pagar`, `contas_receber`, `extrato`, `categorias`, `departamentos`, `clientes`, `fornecedores`, `contacorrente`), mas **nenhum deles retorna saldo**. O `geral/contacorrente` traz só os metadados da conta (nome, banco, agência), não o valor.
 
-## Diagnóstico
+O saldo inicial usado hoje vem da tabela `initial_balances`, preenchida manualmente na aba **Admin → Saldos Iniciais** (ou semeada com 0 via `seed_initial_balances_from_bank_accounts`). A projeção de caixa (`compute_balance_projection`) parte desse valor manual e soma o líquido do DFC realizado.
 
-1. **Mobile login quebrado**: o input `type="password"` em iOS/Android com fonte <16px dispara zoom automático que pode travar o submit em alguns navegadores. Além disso, o `Tabs` (Entrar/Criar conta) usa fonte pequena e área de toque reduzida. Sem `autoComplete`/`inputMode`, o autofill atrapalha. O botão Google em `<lg` ocupa largura cheia mas o card `max-w-md` em telas estreitas tem padding excessivo.
-2. **Recuperação de senha**: a rota `/reset-password` já existe e está linkada, mas o template de email padrão da Lovable manda o link sem branding e o redirect não é validado em mobile (hash `type=recovery` pode vir como `?` em alguns provedores). Falta ainda configurar o Cloud para enviar o email.
-3. **Restrição de domínios**: hoje qualquer email pode se cadastrar. Precisa bloquear no client (UX) **e** no servidor (segurança real) — apenas `@hitech-e.com.br` e `@milen-ia.com`.
+Isso foi uma decisão de simplicidade inicial — mas o Omie **expõe sim** o saldo atual de cada conta corrente via `financas/saldobancario` (call `ListarPosicaoBancaria`) e snapshot por data via `ListarSaldoBancario`. Dá pra automatizar 100%.
 
-## Mudanças
+## O que muda
 
-### 1. Validação de domínio de email (cliente + servidor)
+Adicionar um nono endpoint `saldos_bancarios` no catálogo Omie e consumi-lo a cada sync. O saldo retornado vira a fonte de verdade do caixa, substituindo o input manual de "Caixa / Banco" em `initial_balances`.
 
-- **Client (`src/routes/auth.tsx`)**: criar helper `ALLOWED_DOMAINS = ["hitech-e.com.br", "milen-ia.com"]` e função `isAllowedEmail(email)`. Aplicar em:
-  - `handleSignUp` — bloqueia antes da chamada com toast claro.
-  - `handleSignIn` — bloqueia antes (evita lockout/tentativas com email errado).
-  - `handleGoogle` — após retorno bem-sucedido, verificar `session.user.email`; se não for permitido, fazer `signOut` imediato e mostrar toast.
-  - Hint visual abaixo do campo email no signup: *"Apenas emails @hitech-e.com.br e @milen-ia.com"*.
-- **Server (banco)**: trigger `BEFORE INSERT` em `auth.users` que rejeita emails fora dos domínios permitidos. Como `auth` é schema reservado, a forma correta é criar uma função `public.validate_email_domain()` chamada via trigger `BEFORE INSERT OR UPDATE OF email ON auth.users`. Lança `EXCEPTION` com mensagem em português. Isso garante que mesmo se alguém burlar o client, o backend rejeita.
-- **Bonus**: mesmo trigger valida que o email do OAuth Google bate com o domínio. Sem bypass possível.
+### 1. Novo endpoint Omie
 
-### 2. Refino mobile da tela `/auth`
+`src/integrations/omie/endpoints.ts`:
 
-- Reduzir padding do card em mobile (`p-4 sm:p-6`).
-- Aumentar todos os inputs para `h-11 text-base` em mobile (16px = sem zoom iOS), `sm:h-10 sm:text-sm` em desktop.
-- Adicionar `autoComplete="email"`, `autoComplete="current-password"` / `"new-password"`, `inputMode="email"`, `autoCapitalize="none"`, `spellCheck={false}` nos inputs.
-- Tabs Entrar/Criar conta com `h-10` e `text-sm` (área de toque maior).
-- Botão Google com `h-11` em mobile.
-- Toaster com `position="top-center"` (melhor em mobile, aparece em cima do teclado).
-- `min-h-svh` em vez de `min-h-screen` (corrige altura quando barra do navegador móvel aparece/some).
-- Garantir scroll funcional: container externo com `overflow-y-auto` para casos de teclado virtual aberto em telas pequenas.
+```text
+saldos_bancarios:
+  endpoint: "financas/saldobancario"
+  call:     "ListarPosicaoBancaria"
+  idField:  "nCodCC"
+```
 
-### 3. Recuperação de senha
+Retorna por conta: `nCodCC`, `cCodCCInt`, `nSaldoAtual`, `dDtSaldo`, `nSaldoBloqueado`.
 
-- **Página `/reset-password` (já existe)**: aprimorar detecção do modo `update` aceitando tanto `#type=recovery` quanto `?type=recovery` (fallback via `searchParams`) e validando se há sessão ativa de recovery. Aplicar mesmas melhorias mobile (h-11, autoComplete="new-password").
-- Adicionar feedback claro: *"Link enviado para seu email. Verifique também a caixa de spam."*
-- Validar que o email digitado para recuperação também está nos domínios permitidos (mensagem amigável: *"Email não autorizado neste sistema."*).
-- **Cloud → Emails**: configurar templates de email customizados (signup confirmation, password recovery) com branding Hitech. Requer:
-  1. Configuração de domínio de email (subdomínio delegado).
-  2. Scaffold dos auth email templates (gera função edge + 6 templates React Email com cores Hitech).
-- **Importante**: o setup de email exige um domínio próprio. Vou abrir o diálogo para o usuário configurar no momento da execução.
+### 2. Nova tabela `bank_balances_snapshots`
 
-### 4. Auto-confirm de email
+```text
+bank_balances_snapshots
+  id              uuid pk
+  company_id      uuid fk companies
+  bank_account_id uuid fk bank_accounts
+  snapshot_date   date         -- data do saldo segundo o Omie
+  balance         numeric      -- nSaldoAtual
+  blocked         numeric      -- nSaldoBloqueado
+  source          text         -- 'omie' | 'manual'
+  synced_at       timestamptz
+  unique (company_id, bank_account_id, snapshot_date)
+```
 
-- Hoje o signup pede confirmação por email. Como o cadastro já é restrito a 2 domínios corporativos, faz sentido **manter a confirmação** por segurança (evita typos), mas com email branded da Hitech (item 3 acima).
+RLS: `select` para membros da company; `insert/update` só via service role (sync server). Sem políticas de write para client — a UI lê, o sync escreve.
+
+### 3. Mapper + sync
+
+`src/integrations/omie/sync.server.ts`:
+- novo handler `syncSaldosBancarios(companyId)` que chama `ListarPosicaoBancaria`, casa cada `nCodCC` com `bank_accounts.source_record_id`, faz upsert em `bank_balances_snapshots` com `snapshot_date = dDtSaldo` (ou `CURRENT_DATE`).
+- registra batch em `omie_raw_sync_batches` como qualquer outro endpoint.
+- entra na `OMIE_PRIORITY_ORDER` logo depois de `contas_correntes`.
+
+### 4. Projeção de caixa usa o saldo do Omie
+
+Atualizar `public.compute_balance_projection`:
+- em vez de somar `initial_balances` tipo `caixa_banco` + variação do DFC realizado desde sempre,
+- buscar o **snapshot mais recente do Omie ≤ `_date`** em `bank_balances_snapshots` (somando todas as contas ativas da company), e somar **apenas a variação do DFC realizado entre `snapshot_date` e `_date`**.
+- fallback: se não houver snapshot Omie, mantém a lógica atual com `initial_balances` (não quebra empresas sem Omie).
+
+### 5. UI: Saldos Iniciais
+
+Em `src/components/admin/InitialBalancesTab.tsx`:
+- bloco "Caixa / Banco" passa a mostrar o saldo do Omie por conta (read-only, com data do snapshot e botão "Sincronizar agora").
+- linhas `balance_type = 'caixa_banco'` em `initial_balances` ficam desabilitadas para edição quando há snapshot Omie da mesma conta — com aviso "Saldo vindo do Omie. Edite para sobrescrever."
+- demais tipos (estoque, imobilizado, capital, etc.) continuam manuais como hoje.
+
+### 6. Cron diário
+
+`run_daily_pipeline_all` já existe — adicionar chamada ao novo endpoint de saldos antes de `compute_balance_projection`. Sem nova infra de cron.
 
 ## Arquivos editados
 
-- `src/routes/auth.tsx` — validação de domínio + refino mobile + autoComplete/inputMode.
-- `src/routes/reset-password.tsx` — refino mobile + validação de domínio + detecção robusta de recovery.
-- **Migração SQL** — função `public.validate_email_domain()` + trigger em `auth.users`.
-- **Cloud → Emails** — setup de domínio + scaffold de templates auth (branded Hitech).
+- `src/integrations/omie/endpoints.ts` — adiciona `saldos_bancarios`.
+- `src/integrations/omie/sync.server.ts` — handler + mapper + upsert.
+- **Migração SQL** — tabela `bank_balances_snapshots` + RLS + atualização de `compute_balance_projection`.
+- `src/lib/queries/admin.ts` — hook `useBankBalanceSnapshots(companyId)`.
+- `src/components/admin/InitialBalancesTab.tsx` — exibir snapshots Omie e desabilitar edição manual quando houver.
+- (opcional) `src/utils/omie.functions.ts` — server fn `syncBankBalancesNow` para botão manual.
 
 ## Detalhes técnicos
 
-- Trigger usa `SECURITY DEFINER` e `SET search_path = public`. Lança `RAISE EXCEPTION 'Email domain not allowed. Only @hitech-e.com.br and @milen-ia.com are permitted.'` que aparece no `error.message` do client.
-- A validação client é UX-only; a do banco é a fonte de verdade.
-- Sem mexer em RLS nem em outras tabelas.
-- Para o setup de email branded, será necessário você informar (no diálogo que vai abrir) qual domínio quer usar como remetente — sugestão: `notify.hitech-e.com.br`. Isso requer que você adicione 2 registros NS no provedor do domínio `hitech-e.com.br`.
+- O Omie tem **rate limit por call** (4/seg). `ListarPosicaoBancaria` retorna todas as contas em uma chamada paginada — sem custo significativo.
+- Se uma conta no Omie não tiver match em `bank_accounts.source_record_id` (raro, só se sync de `contas_correntes` ainda não rodou), pula com warning em `omie_sync_logs`.
+- A coluna `bank_accounts.current_balance` que existe hoje (se existir) **não é tocada** — o saldo vive em `bank_balances_snapshots` por dia, dando histórico para gráficos futuros.
+- Sem mudanças em DRE, DFC, KPIs ou outras telas. Apenas a projeção de balanço/caixa fica mais precisa.
 
 ## Fora de escopo
 
-- Magic link / passwordless.
-- 2FA / MFA.
-- Rate limiting custom (Supabase já tem padrão).
-- Apple/Microsoft OAuth.
-
+- Importar histórico completo de saldos passados do Omie (a API retorna só atual + por data específica — exigiria varredura dia-a-dia).
+- Conciliação automática de divergência entre saldo Omie e DFC calculado (fica como insight visual em iteração futura).
+- Substituir saldos não-bancários (estoque, imobilizado, etc.) — esses não existem no Omie financeiro.
