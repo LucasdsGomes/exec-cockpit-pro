@@ -356,6 +356,48 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
+            <Landmark className="size-4 text-primary" /> Empréstimos & Financiamentos (Omie)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="rounded-md border border-border bg-background/40 px-3 py-2.5">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Contratos ativos</div>
+              <div className="text-lg font-semibold tabular-nums mt-0.5">
+                {(loans.data?.activeLoans ?? 0).toLocaleString("pt-BR")}
+                <span className="text-xs text-muted-foreground font-normal ml-1">
+                  / {(loans.data?.totalLoans ?? 0).toLocaleString("pt-BR")}
+                </span>
+              </div>
+            </div>
+            <div className="rounded-md border border-border bg-background/40 px-3 py-2.5">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Saldo devedor</div>
+              <div className="text-lg font-semibold tabular-nums mt-0.5 text-destructive">
+                {(loans.data?.totalOutstanding ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              </div>
+            </div>
+            <div className="rounded-md border border-border bg-background/40 px-3 py-2.5">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Vence em 30 dias</div>
+              <div className="text-lg font-semibold tabular-nums mt-0.5">
+                {(loans.data?.dueNext30d ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              </div>
+            </div>
+            <div className="rounded-md border border-border bg-background/40 px-3 py-2.5">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Em atraso</div>
+              <div className="text-lg font-semibold tabular-nums mt-0.5 text-destructive">
+                {(loans.data?.overdueAmount ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground pt-3">
+            O saldo devedor das parcelas em aberto é refletido automaticamente na linha "Empréstimos" da Projeção de Balanço, substituindo a entrada manual quando há contratos sincronizados.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
             <Receipt className="size-4 text-primary" /> Notas Fiscais (últimos 90 dias)
           </CardTitle>
         </CardHeader>
