@@ -10,7 +10,9 @@ export type OmieEndpointKey =
   | "clientes"
   | "fornecedores"
   | "contas_correntes"
-  | "saldos_bancarios";
+  | "saldos_bancarios"
+  | "pedidos_venda"
+  | "ordens_compra";
 
 export interface OmieEndpointDef {
   key: OmieEndpointKey;
@@ -85,6 +87,20 @@ export const OMIE_ENDPOINTS: Record<OmieEndpointKey, OmieEndpointDef> = {
     call: "ListarPosicaoBancaria",
     idField: "nCodCC",
   },
+  pedidos_venda: {
+    key: "pedidos_venda",
+    label: "Pedidos de Venda",
+    endpoint: "produtos/pedido",
+    call: "ListarPedidos",
+    idField: "codigo_pedido",
+  },
+  ordens_compra: {
+    key: "ordens_compra",
+    label: "Ordens de Compra",
+    endpoint: "produtos/ordemcompra",
+    call: "ListarOrdemCompra",
+    idField: "codigo_ordem_compra",
+  },
 };
 
 export const OMIE_PRIORITY_ORDER: OmieEndpointKey[] = [
@@ -94,6 +110,8 @@ export const OMIE_PRIORITY_ORDER: OmieEndpointKey[] = [
   "saldos_bancarios",
   "clientes",
   "fornecedores",
+  "pedidos_venda",
+  "ordens_compra",
   "contas_pagar",
   "contas_receber",
   "movimentacoes_bancarias",
