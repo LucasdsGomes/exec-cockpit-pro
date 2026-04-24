@@ -1691,6 +1691,120 @@ export type Database = {
           },
         ]
       }
+      fiscal_documents: {
+        Row: {
+          amount_cofins: number
+          amount_csll: number
+          amount_discount: number
+          amount_gross: number
+          amount_icms: number
+          amount_inss: number
+          amount_irrf: number
+          amount_iss: number
+          amount_net: number
+          amount_pis: number
+          amount_taxes: number
+          cfop: string | null
+          chave_acesso: string | null
+          company_id: string
+          competence_date: string
+          created_at: string
+          customer_id: string | null
+          description: string | null
+          doc_type: Database["public"]["Enums"]["fiscal_doc_type"]
+          id: string
+          imported_batch_id: string | null
+          issue_date: string
+          linked_financial_entry_id: string | null
+          metadata: Json
+          numero: string | null
+          party_document: string | null
+          party_name: string | null
+          serie: string | null
+          source_endpoint: string
+          source_record_id: string | null
+          source_system: string
+          status: Database["public"]["Enums"]["fiscal_doc_status"]
+          supplier_id: string | null
+          synced_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount_cofins?: number
+          amount_csll?: number
+          amount_discount?: number
+          amount_gross?: number
+          amount_icms?: number
+          amount_inss?: number
+          amount_irrf?: number
+          amount_iss?: number
+          amount_net?: number
+          amount_pis?: number
+          amount_taxes?: number
+          cfop?: string | null
+          chave_acesso?: string | null
+          company_id: string
+          competence_date: string
+          created_at?: string
+          customer_id?: string | null
+          description?: string | null
+          doc_type: Database["public"]["Enums"]["fiscal_doc_type"]
+          id?: string
+          imported_batch_id?: string | null
+          issue_date: string
+          linked_financial_entry_id?: string | null
+          metadata?: Json
+          numero?: string | null
+          party_document?: string | null
+          party_name?: string | null
+          serie?: string | null
+          source_endpoint: string
+          source_record_id?: string | null
+          source_system?: string
+          status?: Database["public"]["Enums"]["fiscal_doc_status"]
+          supplier_id?: string | null
+          synced_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount_cofins?: number
+          amount_csll?: number
+          amount_discount?: number
+          amount_gross?: number
+          amount_icms?: number
+          amount_inss?: number
+          amount_irrf?: number
+          amount_iss?: number
+          amount_net?: number
+          amount_pis?: number
+          amount_taxes?: number
+          cfop?: string | null
+          chave_acesso?: string | null
+          company_id?: string
+          competence_date?: string
+          created_at?: string
+          customer_id?: string | null
+          description?: string | null
+          doc_type?: Database["public"]["Enums"]["fiscal_doc_type"]
+          id?: string
+          imported_batch_id?: string | null
+          issue_date?: string
+          linked_financial_entry_id?: string | null
+          metadata?: Json
+          numero?: string | null
+          party_document?: string | null
+          party_name?: string | null
+          serie?: string | null
+          source_endpoint?: string
+          source_record_id?: string | null
+          source_system?: string
+          status?: Database["public"]["Enums"]["fiscal_doc_status"]
+          supplier_id?: string | null
+          synced_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       initial_balances: {
         Row: {
           account_label: string | null
@@ -2589,6 +2703,23 @@ export type Database = {
         }
         Relationships: []
       }
+      dre_competencia: {
+        Row: {
+          amount: number | null
+          amount_signed: number | null
+          category_mapped: string | null
+          company_id: string | null
+          competence_date: string | null
+          cost_center_id: string | null
+          customer_id: string | null
+          dre_group: string | null
+          dre_subgroup: string | null
+          source_id: string | null
+          source_kind: string | null
+          supplier_id: string | null
+        }
+        Relationships: []
+      }
       v_budget_vs_actual: {
         Row: {
           actual_amount: number | null
@@ -2776,6 +2907,14 @@ export type Database = {
         Args: { _company: string; _date: string }
         Returns: string
       }
+      compute_dre_competencia: {
+        Args: { _company: string; _from: string; _to: string }
+        Returns: {
+          amount_signed: number
+          dre_group: string
+          dre_subgroup: string
+        }[]
+      }
       compute_financial_cycle: {
         Args: { _company: string; _period: string }
         Returns: {
@@ -2858,6 +2997,17 @@ export type Database = {
       commitment_status: "aberto" | "parcial" | "faturado" | "cancelado"
       entry_direction: "entrada" | "saida"
       entry_status: "previsto" | "realizado" | "cancelado" | "parcial"
+      fiscal_doc_status:
+        | "autorizada"
+        | "cancelada"
+        | "denegada"
+        | "inutilizada"
+        | "rascunho"
+      fiscal_doc_type:
+        | "nfe_emitida"
+        | "nfe_recebida"
+        | "nfse_emitida"
+        | "nfse_recebida"
       flow_type: "operacional" | "investimento" | "financiamento"
       sync_status: "pending" | "running" | "success" | "error" | "partial"
     }
@@ -2993,6 +3143,19 @@ export const Constants = {
       commitment_status: ["aberto", "parcial", "faturado", "cancelado"],
       entry_direction: ["entrada", "saida"],
       entry_status: ["previsto", "realizado", "cancelado", "parcial"],
+      fiscal_doc_status: [
+        "autorizada",
+        "cancelada",
+        "denegada",
+        "inutilizada",
+        "rascunho",
+      ],
+      fiscal_doc_type: [
+        "nfe_emitida",
+        "nfe_recebida",
+        "nfse_emitida",
+        "nfse_recebida",
+      ],
       flow_type: ["operacional", "investimento", "financiamento"],
       sync_status: ["pending", "running", "success", "error", "partial"],
     },

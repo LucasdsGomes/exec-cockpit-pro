@@ -38,12 +38,13 @@ export const Route = createFileRoute("/_app/dre")({
 function DREPage() {
   const [period, setPeriod] = useState("mtd");
   const [drillLine, setDrillLine] = useState<string | null>(null);
+  const [regime, setRegime] = useState<"caixa" | "competencia">("caixa");
   const { data: company } = useCompany();
   const companyId = company?.id;
   const filters = useFilters();
   const { data: kpis } = useKpis(period, companyId, filters);
-  const { data: dre = [], isLoading: loadingDre } = useDreLines(companyId, period, filters);
-  const { data: waterfall = [] } = useDreWaterfall(companyId, period, filters);
+  const { data: dre = [], isLoading: loadingDre } = useDreLines(companyId, period, filters, regime);
+  const { data: waterfall = [] } = useDreWaterfall(companyId, period, filters, regime);
 
   const exportCsv = () => {
     if (!dre.length) return;
@@ -96,9 +97,35 @@ function DREPage() {
       <SectionHeader
         eyebrow="Resultado"
         title="DRE Gerencial"
-        description={kpis ? `Demonstrativo · ${kpis.range.label}` : "Demonstrativo de resultados consolidado"}
+        description={
+          kpis
+            ? `Demonstrativo · ${kpis.range.label} · Regime ${regime === "competencia" ? "de Competência (NF emitida)" : "de Caixa (título financeiro)"}`
+            : "Demonstrativo de resultados consolidado"
+        }
         actions={
           <>
+            <div className="inline-flex rounded-md border border-border bg-card overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setRegime("caixa")}
+                className={cn(
+                  "px-2.5 py-1.5 text-xs font-medium transition-colors",
+                  regime === "caixa" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                Caixa
+              </button>
+              <button
+                type="button"
+                onClick={() => setRegime("competencia")}
+                className={cn(
+                  "px-2.5 py-1.5 text-xs font-medium transition-colors border-l border-border",
+                  regime === "competencia" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                Competência
+              </button>
+            </div>
             <PeriodPresets value={period} onChange={setPeriod} />
             <Button variant="outline" size="sm" className="gap-1.5" onClick={exportCsv}>
               <Download className="size-3.5" /> Exportar

@@ -360,6 +360,211 @@ async function upsertCommitment(record: CommitmentRecord) {
   return { inserted: error ? 0 : 1, updated: 0, errors: error ? 1 : 0 };
 }
 
+// --- Fiscal documents (NF-e / NFS-e emitidas) ---
+
+type FiscalDocType = "nfe_emitida" | "nfe_recebida" | "nfse_emitida" | "nfse_recebida";
+type FiscalDocStatus = "autorizada" | "cancelada" | "denegada" | "inutilizada" | "rascunho";
+
+interface FiscalDocRecord {
+  company_id: string;
+  source_endpoint: string;
+  source_record_id: string | null;
+  imported_batch_id: string;
+  doc_type: FiscalDocType;
+  status: FiscalDocStatus;
+  numero: string | null;
+  serie: string | null;
+  chave_acesso: string | null;
+  cfop: string | null;
+  issue_date: string;
+  competence_date: string;
+  party_name: string | null;
+  party_document: string | null;
+  amount_gross: number;
+  amount_discount: number;
+  amount_net: number;
+  amount_taxes: number;
+  amount_iss: number;
+  amount_icms: number;
+  amount_pis: number;
+  amount_cofins: number;
+  amount_irrf: number;
+  amount_csll: number;
+  amount_inss: number;
+  description: string | null;
+  metadata: Record<string, unknown>;
+  _customer_src: string | null;
+}
+
+function mapNfeStatus(s: string | null): FiscalDocStatus {
+  const v = (s ?? "").toUpperCase().trim();
+  if (v.includes("CANC")) return "cancelada";
+  if (v.includes("DENEG")) return "denegada";
+  if (v.includes("INUTIL")) return "inutilizada";
+  if (v.includes("RASC") || v.includes("DIGIT")) return "rascunho";
+  return "autorizada";
+}
+
+function mapNFe(r: AnyRec, companyId: string, batchId: string): FiscalDocRecord {
+  const ide = (r["compl"] as AnyRec) ?? (r["ide"] as AnyRec) ?? r;
+  const totais = ((r["total"] as AnyRec)?.["ICMSTot"] as AnyRec) ?? (r["totalNFe"] as AnyRec) ?? (r["total_nfe"] as AnyRec) ?? {};
+  const dest = (r["dest"] as AnyRec) ?? (r["destinatario"] as AnyRec) ?? {};
+  const nIdNF = asString(r["nIdNF"] ?? r["cChaveNFe"] ?? ide["nIdNF"]);
+  const numero = asString(ide["nNF"] ?? ide["numero_nf"] ?? r["nNF"]);
+  const serie = asString(ide["serie"] ?? ide["nSerie"] ?? r["serie"]);
+  const chave = asString(r["cChaveNFe"] ?? ide["cChaveNFe"] ?? r["chave_acesso"]);
+  const cfop = asString(ide["CFOP"] ?? ide["cfop"]);
+  const dtEmi = brDateToISO(ide["dEmi"] ?? ide["data_emissao"] ?? r["dEmi"] ?? r["data_emissao"]);
+  const issue = dtEmi ?? new Date().toISOString().slice(0, 10);
+  const valorBruto = asNumber(totais["vProd"] ?? totais["valor_produtos"] ?? r["vProd"]);
+  const valorLiq = asNumber(totais["vNF"] ?? totais["valor_nota"] ?? r["vNF"]);
+  const desconto = asNumber(totais["vDesc"] ?? totais["desconto"]);
+  const vICMS = asNumber(totais["vICMS"]);
+  const vPIS = asNumber(totais["vPIS"]);
+  const vCOFINS = asNumber(totais["vCOFINS"]);
+  const vIRRF = asNumber(totais["vIRRF"] ?? totais["vRetIRRF"]);
+  const vCSLL = asNumber(totais["vCSLL"] ?? totais["vRetCSLL"]);
+  const status = mapNfeStatus(asString(r["cStat"] ?? r["status"] ?? ide["cStat"]));
+  const partyName = asString(dest["xNome"] ?? dest["razao_social"] ?? r["nome_destinatario"]);
+  const partyDoc = asString(dest["CNPJ"] ?? dest["CPF"] ?? dest["cnpj_cpf"]);
+  const customerSrc = asString(dest["nCodCli"] ?? dest["codigo_cliente"]);
+  return {
+    company_id: companyId,
+    source_endpoint: "produtos/nfconsultar",
+    source_record_id: nIdNF ?? chave ?? `${numero}-${serie}`,
+    imported_batch_id: batchId,
+    doc_type: "nfe_emitida",
+    status,
+    numero,
+    serie,
+    chave_acesso: chave,
+    cfop,
+    issue_date: issue,
+    competence_date: issue,
+    party_name: partyName,
+    party_document: partyDoc,
+    amount_gross: Math.abs(valorBruto || valorLiq),
+    amount_discount: Math.abs(desconto),
+    amount_net: Math.abs(valorLiq || valorBruto),
+    amount_taxes: Math.abs(vICMS + vPIS + vCOFINS + vIRRF + vCSLL),
+    amount_iss: 0,
+    amount_icms: Math.abs(vICMS),
+    amount_pis: Math.abs(vPIS),
+    amount_cofins: Math.abs(vCOFINS),
+    amount_irrf: Math.abs(vIRRF),
+    amount_csll: Math.abs(vCSLL),
+    amount_inss: 0,
+    description: `NF-e ${numero ?? ""}/${serie ?? ""}`.trim(),
+    metadata: r as Record<string, unknown>,
+    _customer_src: customerSrc,
+  };
+}
+
+function mapNFSe(r: AnyRec, companyId: string, batchId: string): FiscalDocRecord {
+  const cab = (r["Cabecalho"] as AnyRec) ?? (r["cabecalho"] as AnyRec) ?? r;
+  const valores = (r["Valores"] as AnyRec) ?? (r["valores"] as AnyRec) ?? {};
+  const tomador = (r["Tomador"] as AnyRec) ?? (r["tomador"] as AnyRec) ?? {};
+  const nCodNF = asString(cab["nCodNF"] ?? cab["nIdNFSe"] ?? r["nCodNF"]);
+  const numero = asString(cab["cNumero"] ?? cab["numero_nfse"] ?? r["cNumero"]);
+  const serie = asString(cab["cSerie"] ?? cab["serie_nfse"]);
+  const dtEmi = brDateToISO(cab["dEmissao"] ?? cab["data_emissao"] ?? r["dEmissao"]);
+  const issue = dtEmi ?? new Date().toISOString().slice(0, 10);
+  const valorBruto = asNumber(valores["nValorServicos"] ?? valores["valor_servicos"]);
+  const valorLiq = asNumber(valores["nValorLiquido"] ?? valores["valor_liquido"] ?? valorBruto);
+  const desconto = asNumber(valores["nDescIncondicionado"] ?? valores["desconto"]);
+  const vISS = asNumber(valores["nValorISS"] ?? valores["valor_iss"]);
+  const vPIS = asNumber(valores["nValorPIS"] ?? valores["valor_pis"]);
+  const vCOFINS = asNumber(valores["nValorCOFINS"] ?? valores["valor_cofins"]);
+  const vIRRF = asNumber(valores["nValorIR"] ?? valores["valor_ir"]);
+  const vCSLL = asNumber(valores["nValorCSLL"] ?? valores["valor_csll"]);
+  const vINSS = asNumber(valores["nValorINSS"] ?? valores["valor_inss"]);
+  const status = mapNfeStatus(asString(cab["cStatus"] ?? cab["status_nfse"]));
+  const partyName = asString(tomador["cNome"] ?? tomador["razao_social"] ?? tomador["xNome"]);
+  const partyDoc = asString(tomador["cCnpjCpf"] ?? tomador["CNPJ"] ?? tomador["cnpj_cpf"]);
+  const customerSrc = asString(tomador["nCodCli"] ?? tomador["codigo_cliente"]);
+  return {
+    company_id: companyId,
+    source_endpoint: "servicos/nfse",
+    source_record_id: nCodNF ?? `${numero}-${serie}`,
+    imported_batch_id: batchId,
+    doc_type: "nfse_emitida",
+    status,
+    numero,
+    serie,
+    chave_acesso: null,
+    cfop: null,
+    issue_date: issue,
+    competence_date: issue,
+    party_name: partyName,
+    party_document: partyDoc,
+    amount_gross: Math.abs(valorBruto),
+    amount_discount: Math.abs(desconto),
+    amount_net: Math.abs(valorLiq),
+    amount_taxes: Math.abs(vISS + vPIS + vCOFINS + vIRRF + vCSLL + vINSS),
+    amount_iss: Math.abs(vISS),
+    amount_icms: 0,
+    amount_pis: Math.abs(vPIS),
+    amount_cofins: Math.abs(vCOFINS),
+    amount_irrf: Math.abs(vIRRF),
+    amount_csll: Math.abs(vCSLL),
+    amount_inss: Math.abs(vINSS),
+    description: `NFS-e ${numero ?? ""}`.trim(),
+    metadata: r as Record<string, unknown>,
+    _customer_src: customerSrc,
+  };
+}
+
+async function upsertFiscalDoc(record: FiscalDocRecord) {
+  if (!record.source_record_id) return { inserted: 0, updated: 0, errors: 0 };
+  const { _customer_src, metadata, ...base } = record;
+
+  let customer_id: string | null = null;
+  if (_customer_src) {
+    const { data } = await supabaseAdmin
+      .from("customers").select("id")
+      .eq("company_id", record.company_id).eq("source_record_id", _customer_src).maybeSingle();
+    customer_id = data?.id ?? null;
+  }
+
+  // Try to link to a financial entry (receivable) via document_number
+  let linked_financial_entry_id: string | null = null;
+  if (record.numero) {
+    const { data } = await supabaseAdmin
+      .from("financial_entries").select("id")
+      .eq("company_id", record.company_id)
+      .eq("source_endpoint", "financas/contareceber")
+      .eq("document_number", record.numero)
+      .maybeSingle();
+    linked_financial_entry_id = data?.id ?? null;
+  }
+
+  const enriched = {
+    ...base,
+    source_record_id: base.source_record_id as string,
+    customer_id,
+    supplier_id: null as string | null,
+    linked_financial_entry_id,
+    metadata: metadata as never,
+    source_system: "omie",
+    synced_at: new Date().toISOString(),
+  };
+
+  const { data: existing } = await supabaseAdmin
+    .from("fiscal_documents").select("id")
+    .eq("company_id", enriched.company_id)
+    .eq("source_endpoint", enriched.source_endpoint)
+    .eq("source_record_id", enriched.source_record_id)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabaseAdmin
+      .from("fiscal_documents").update(enriched).eq("id", existing.id);
+    return { inserted: 0, updated: error ? 0 : 1, errors: error ? 1 : 0 };
+  }
+  const { error } = await supabaseAdmin.from("fiscal_documents").insert([enriched]);
+  return { inserted: error ? 0 : 1, updated: 0, errors: error ? 1 : 0 };
+}
+
 // --- Endpoint runners ---
 
 async function runListEndpoint(opts: {
@@ -645,6 +850,24 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
           triggeredBy,
           param: periodFilter,
           upsert: (item, batchId) => upsertCommitment(mapOrdemCompra(item, opts.companyId, batchId)),
+        });
+        break;
+      case "notas_fiscais_emitidas":
+        r = await runListEndpoint({
+          key,
+          companyId: opts.companyId,
+          triggeredBy,
+          param: periodFilter,
+          upsert: (item, batchId) => upsertFiscalDoc(mapNFe(item, opts.companyId, batchId)),
+        });
+        break;
+      case "notas_servico_emitidas":
+        r = await runListEndpoint({
+          key,
+          companyId: opts.companyId,
+          triggeredBy,
+          param: periodFilter,
+          upsert: (item, batchId) => upsertFiscalDoc(mapNFSe(item, opts.companyId, batchId)),
         });
         break;
     }
