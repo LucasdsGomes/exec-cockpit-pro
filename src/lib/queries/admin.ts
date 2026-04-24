@@ -472,6 +472,88 @@ export function useSyncBankStatements(companyId: string | null | undefined) {
   });
 }
 
+export function useSyncLancamentosCC(companyId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (
+      arg: number | { lookbackDays?: number; bankAccountId?: string | null } = 90,
+    ) => {
+      if (!companyId) throw new Error("Empresa não selecionada");
+      const lookbackDays = typeof arg === "number" ? arg : (arg.lookbackDays ?? 90);
+      const bankAccountId = typeof arg === "number" ? null : (arg.bankAccountId ?? null);
+      const res = await fetch("/api/public/hooks/omie-sync-now", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          companyId,
+          lookbackDays,
+          mode: "incremental",
+          endpoints: ["lancamentos_cc"],
+          bankAccountId,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json() as Promise<{
+        ok: boolean;
+        totals?: { inserted: number; updated: number; errors: number };
+      }>;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["syncBatches", companyId] });
+      qc.invalidateQueries({ queryKey: ["systemHealth", companyId] });
+      qc.invalidateQueries({ queryKey: ["bankMovementsSummary", companyId] });
+    },
+  });
+}
+
+export function usePairBankTransfers(companyId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      if (!companyId) throw new Error("Empresa não selecionada");
+      const { data, error } = await supabase.rpc("pair_bank_transfers", { _company: companyId });
+      if (error) throw error;
+      return data as { paired: number };
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bankMovementsSummary", companyId] }),
+  });
+}
+
+export function useBankMovementsSummary(companyId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["bankMovementsSummary", companyId],
+    enabled: !!companyId,
+    queryFn: async () => {
+      const since = new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10);
+      const { data, error } = await supabase
+        .from("bank_movements")
+        .select("kind, direction, amount, reconciled, transfer_pair_id, movement_date")
+        .eq("company_id", companyId!)
+        .gte("movement_date", since);
+      if (error) throw error;
+      const rows = data ?? [];
+      const byKind = (k: string) => rows.filter((r) => r.kind === k);
+      const sum = (arr: typeof rows) => arr.reduce((a, r) => a + Number(r.amount ?? 0), 0);
+      return {
+        total: rows.length,
+        extrato: byKind("extrato").length,
+        lancCC: byKind("lancamento_cc").length,
+        transferencias: byKind("transferencia").length,
+        tarifas: byKind("tarifa").length,
+        juros: byKind("juros").length,
+        rendimentos: byKind("rendimento").length,
+        tarifasValor: sum(byKind("tarifa")),
+        jurosValor: sum(byKind("juros")),
+        rendimentosValor: sum(byKind("rendimento")),
+        reconciled: rows.filter((r) => r.reconciled).length,
+      };
+    },
+  });
+}
+
 export function useSyncCommercialCommitments(companyId: string | null | undefined) {
   const qc = useQueryClient();
   return useMutation({
