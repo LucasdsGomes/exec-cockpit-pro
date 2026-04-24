@@ -2,9 +2,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Activity, CheckCircle2, AlertTriangle, Clock, Database, Loader2, Wrench, Link2, FileText, GitMerge } from "lucide-react";
+import { Activity, CheckCircle2, AlertTriangle, Clock, Database, Loader2, Wrench, Link2, FileText, GitMerge, ShoppingCart } from "lucide-react";
 import { useSystemHealth, useCronJobs, useBackfillBalance, useMirrorApAr, useBackfillRefs } from "@/lib/queries/health";
-import { useSyncBankStatements, useReconcileBankMovements } from "@/lib/queries/admin";
+import { useSyncBankStatements, useReconcileBankMovements, useSyncCommercialCommitments, useCommercialCommitmentsSummary } from "@/lib/queries/admin";
 import { toast } from "sonner";
 
 function fmt(d: string | null) {
@@ -34,6 +34,8 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
   const refs = useBackfillRefs(companyId);
   const syncStatements = useSyncBankStatements(companyId);
   const reconcile = useReconcileBankMovements(companyId);
+  const syncCommitments = useSyncCommercialCommitments(companyId);
+  const commitments = useCommercialCommitmentsSummary(companyId);
 
   const handleBackfill = () => {
     toast.promise(backfill.mutateAsync(30), {
