@@ -12,7 +12,9 @@ export type OmieEndpointKey =
   | "contas_correntes"
   | "saldos_bancarios"
   | "pedidos_venda"
-  | "ordens_compra";
+  | "ordens_compra"
+  | "notas_fiscais_emitidas"
+  | "notas_servico_emitidas";
 
 export interface OmieEndpointDef {
   key: OmieEndpointKey;
@@ -101,6 +103,20 @@ export const OMIE_ENDPOINTS: Record<OmieEndpointKey, OmieEndpointDef> = {
     call: "ListarOrdemCompra",
     idField: "codigo_ordem_compra",
   },
+  notas_fiscais_emitidas: {
+    key: "notas_fiscais_emitidas",
+    label: "Notas Fiscais (NF-e) emitidas",
+    endpoint: "produtos/nfconsultar",
+    call: "ListarNF",
+    idField: "nIdNF",
+  },
+  notas_servico_emitidas: {
+    key: "notas_servico_emitidas",
+    label: "Notas de Serviço (NFS-e) emitidas",
+    endpoint: "servicos/nfse",
+    call: "ListarNfse",
+    idField: "nCodNF",
+  },
 };
 
 export const OMIE_PRIORITY_ORDER: OmieEndpointKey[] = [
@@ -114,5 +130,7 @@ export const OMIE_PRIORITY_ORDER: OmieEndpointKey[] = [
   "ordens_compra",
   "contas_pagar",
   "contas_receber",
+  "notas_fiscais_emitidas",
+  "notas_servico_emitidas",
   "movimentacoes_bancarias",
 ];
