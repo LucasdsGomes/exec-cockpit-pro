@@ -629,6 +629,24 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
           triggeredBy,
         });
         break;
+      case "pedidos_venda":
+        r = await runListEndpoint({
+          key,
+          companyId: opts.companyId,
+          triggeredBy,
+          param: periodFilter,
+          upsert: (item, batchId) => upsertCommitment(mapPedidoVenda(item, opts.companyId, batchId)),
+        });
+        break;
+      case "ordens_compra":
+        r = await runListEndpoint({
+          key,
+          companyId: opts.companyId,
+          triggeredBy,
+          param: periodFilter,
+          upsert: (item, batchId) => upsertCommitment(mapOrdemCompra(item, opts.companyId, batchId)),
+        });
+        break;
     }
     results.push(r);
     totalInserted += r.inserted;
