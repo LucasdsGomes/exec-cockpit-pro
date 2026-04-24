@@ -2,9 +2,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Activity, CheckCircle2, AlertTriangle, Clock, Database, Loader2, Wrench, Link2, FileText, GitMerge, ShoppingCart, Receipt, Banknote, ArrowLeftRight, FolderKanban, Tag, Landmark } from "lucide-react";
+import { Activity, CheckCircle2, AlertTriangle, Clock, Database, Loader2, Wrench, Link2, FileText, GitMerge, ShoppingCart, Receipt, Banknote, ArrowLeftRight, FolderKanban, Tag, Landmark, DownloadCloud } from "lucide-react";
 import { useSystemHealth, useCronJobs, useBackfillBalance, useMirrorApAr, useBackfillRefs } from "@/lib/queries/health";
-import { useSyncBankStatements, useReconcileBankMovements, useSyncCommercialCommitments, useCommercialCommitmentsSummary, useSyncFiscalDocuments, useFiscalDocumentsSummary, useSyncLancamentosCC, usePairBankTransfers, useBankMovementsSummary, useSyncProjectsAndTags, useLinkEntriesToProjects, useProjectsSummary, useSyncLoans, useLoansSummary } from "@/lib/queries/admin";
+import { useSyncBankStatements, useReconcileBankMovements, useSyncCommercialCommitments, useCommercialCommitmentsSummary, useSyncFiscalDocuments, useFiscalDocumentsSummary, useSyncLancamentosCC, usePairBankTransfers, useBankMovementsSummary, useSyncProjectsAndTags, useLinkEntriesToProjects, useProjectsSummary, useSyncLoans, useLoansSummary, useFullSync } from "@/lib/queries/admin";
 import { toast } from "sonner";
 
 function fmt(d: string | null) {
@@ -46,6 +46,7 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
   const projects = useProjectsSummary(companyId);
   const syncLoans = useSyncLoans(companyId);
   const loans = useLoansSummary(companyId);
+  const fullSync = useFullSync(companyId);
 
   const handleBackfill = () => {
     toast.promise(backfill.mutateAsync(30), {
@@ -149,6 +150,20 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
     });
   };
 
+  const handleFullSync = () => {
+    if (!confirm("Isso vai recarregar TODOS os endpoints da Omie desde 2015. Pode demorar vários minutos. Continuar?")) return;
+    toast.promise(fullSync.mutateAsync(), {
+      loading: "Sincronização completa em andamento (pode levar minutos)…",
+      success: (r) => {
+        const t = r.totals;
+        const okCount = (r.endpoints ?? []).filter((e) => e.errors === 0).length;
+        const total = (r.endpoints ?? []).length;
+        return `Sync completa · ${okCount}/${total} endpoints · ${t?.inserted ?? 0} novos, ${t?.updated ?? 0} atualizados`;
+      },
+      error: (e) => `Erro: ${e.message}`,
+    });
+  };
+
   if (health.isLoading) return <Skeleton className="h-96" />;
   const h = health.data;
 
@@ -183,6 +198,10 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
+            <Button onClick={handleFullSync} disabled={fullSync.isPending} variant="default" className="w-full justify-start gap-2">
+              {fullSync.isPending ? <Loader2 className="size-4 animate-spin" /> : <DownloadCloud className="size-4" />}
+              Sincronizar TUDO desde o início (full reload)
+            </Button>
             <Button onClick={handleMirror} disabled={mirror.isPending} variant="outline" className="w-full justify-start gap-2">
               {mirror.isPending ? <Loader2 className="size-4 animate-spin" /> : <Database className="size-4" />}
               Espelhar Contas a Pagar / Receber
