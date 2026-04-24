@@ -1192,3 +1192,45 @@ export function useLoansSummary(companyId: string | null | undefined) {
     },
   });
 }
+
+// ---------- Full sync (todos os endpoints, desde o início) ----------
+
+export function useFullSync(companyId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      if (!companyId) throw new Error("Empresa não selecionada");
+      const res = await fetch("/api/public/hooks/omie-sync-now", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          companyId,
+          mode: "full",
+          lookbackDays: 3650, // ~10 anos
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json() as Promise<{
+        ok: boolean;
+        endpoints?: Array<{ key: string; inserted: number; updated: number; errors: number }>;
+        totals?: { inserted: number; updated: number; errors: number };
+      }>;
+    },
+    onSuccess: () => {
+      // Invalida tudo que depende de dados sincronizados
+      qc.invalidateQueries({ queryKey: ["systemHealth", companyId] });
+      qc.invalidateQueries({ queryKey: ["balance", companyId] });
+      qc.invalidateQueries({ queryKey: ["dre", companyId] });
+      qc.invalidateQueries({ queryKey: ["dfc", companyId] });
+      qc.invalidateQueries({ queryKey: ["kpis", companyId] });
+      qc.invalidateQueries({ queryKey: ["projectsSummary", companyId] });
+      qc.invalidateQueries({ queryKey: ["loansSummary", companyId] });
+      qc.invalidateQueries({ queryKey: ["fiscalSummary", companyId] });
+      qc.invalidateQueries({ queryKey: ["commitmentsSummary", companyId] });
+      qc.invalidateQueries({ queryKey: ["bankMovementsSummary", companyId] });
+    },
+  });
+}
