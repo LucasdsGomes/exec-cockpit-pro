@@ -458,6 +458,12 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
           bankAccountId: opts.bankAccountId ?? null,
         });
         break;
+      case "saldos_bancarios":
+        r = await runBankBalancesSync({
+          companyId: opts.companyId,
+          triggeredBy,
+        });
+        break;
     }
     results.push(r);
     totalInserted += r.inserted;
