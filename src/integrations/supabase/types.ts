@@ -1957,6 +1957,199 @@ export type Database = {
           },
         ]
       }
+      loan_installments: {
+        Row: {
+          amount: number
+          company_id: string
+          created_at: string
+          due_date: string
+          financial_entry_id: string | null
+          id: string
+          installment_number: number
+          interest_amount: number | null
+          loan_id: string
+          metadata: Json | null
+          paid_amount: number | null
+          paid_at: string | null
+          principal_amount: number | null
+          status: Database["public"]["Enums"]["loan_installment_status"]
+          updated_at: string
+        }
+        Insert: {
+          amount?: number
+          company_id: string
+          created_at?: string
+          due_date: string
+          financial_entry_id?: string | null
+          id?: string
+          installment_number: number
+          interest_amount?: number | null
+          loan_id: string
+          metadata?: Json | null
+          paid_amount?: number | null
+          paid_at?: string | null
+          principal_amount?: number | null
+          status?: Database["public"]["Enums"]["loan_installment_status"]
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          company_id?: string
+          created_at?: string
+          due_date?: string
+          financial_entry_id?: string | null
+          id?: string
+          installment_number?: number
+          interest_amount?: number | null
+          loan_id?: string
+          metadata?: Json | null
+          paid_amount?: number | null
+          paid_at?: string | null
+          principal_amount?: number | null
+          status?: Database["public"]["Enums"]["loan_installment_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loan_installments_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loan_installments_financial_entry_id_fkey"
+            columns: ["financial_entry_id"]
+            isOneToOne: false
+            referencedRelation: "financial_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loan_installments_financial_entry_id_fkey"
+            columns: ["financial_entry_id"]
+            isOneToOne: false
+            referencedRelation: "v_unclassified_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loan_installments_financial_entry_id_fkey"
+            columns: ["financial_entry_id"]
+            isOneToOne: false
+            referencedRelation: "v_unclassified_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loan_installments_loan_id_fkey"
+            columns: ["loan_id"]
+            isOneToOne: false
+            referencedRelation: "loans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loans: {
+        Row: {
+          bank_account_id: string | null
+          company_id: string
+          contract_date: string | null
+          contract_number: string | null
+          created_at: string
+          description: string | null
+          first_due_date: string | null
+          id: string
+          institution: string | null
+          interest_rate_monthly: number | null
+          kind: Database["public"]["Enums"]["loan_kind"]
+          last_due_date: string | null
+          metadata: Json | null
+          outstanding_balance: number | null
+          paid_installments: number | null
+          principal_amount: number
+          source_endpoint: string | null
+          source_record_id: string | null
+          source_system: string | null
+          status: Database["public"]["Enums"]["loan_status"]
+          supplier_id: string | null
+          synced_at: string | null
+          total_installments: number | null
+          updated_at: string
+        }
+        Insert: {
+          bank_account_id?: string | null
+          company_id: string
+          contract_date?: string | null
+          contract_number?: string | null
+          created_at?: string
+          description?: string | null
+          first_due_date?: string | null
+          id?: string
+          institution?: string | null
+          interest_rate_monthly?: number | null
+          kind?: Database["public"]["Enums"]["loan_kind"]
+          last_due_date?: string | null
+          metadata?: Json | null
+          outstanding_balance?: number | null
+          paid_installments?: number | null
+          principal_amount?: number
+          source_endpoint?: string | null
+          source_record_id?: string | null
+          source_system?: string | null
+          status?: Database["public"]["Enums"]["loan_status"]
+          supplier_id?: string | null
+          synced_at?: string | null
+          total_installments?: number | null
+          updated_at?: string
+        }
+        Update: {
+          bank_account_id?: string | null
+          company_id?: string
+          contract_date?: string | null
+          contract_number?: string | null
+          created_at?: string
+          description?: string | null
+          first_due_date?: string | null
+          id?: string
+          institution?: string | null
+          interest_rate_monthly?: number | null
+          kind?: Database["public"]["Enums"]["loan_kind"]
+          last_due_date?: string | null
+          metadata?: Json | null
+          outstanding_balance?: number | null
+          paid_installments?: number | null
+          principal_amount?: number
+          source_endpoint?: string | null
+          source_record_id?: string | null
+          source_system?: string | null
+          status?: Database["public"]["Enums"]["loan_status"]
+          supplier_id?: string | null
+          synced_at?: string | null
+          total_installments?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loans_bank_account_id_fkey"
+            columns: ["bank_account_id"]
+            isOneToOne: false
+            referencedRelation: "bank_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loans_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loans_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       manual_entries: {
         Row: {
           active: boolean
@@ -2927,6 +3120,27 @@ export type Database = {
         }
         Relationships: []
       }
+      loans_outstanding_balance: {
+        Row: {
+          active_loans: number | null
+          company_id: string | null
+          due_next_30d: number | null
+          overdue_amount: number | null
+          total_interest: number | null
+          total_outstanding: number | null
+          total_paid: number | null
+          total_principal: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loans_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       v_budget_vs_actual: {
         Row: {
           actual_amount: number | null
@@ -3230,6 +3444,25 @@ export type Database = {
         | "nfse_emitida"
         | "nfse_recebida"
       flow_type: "operacional" | "investimento" | "financiamento"
+      loan_installment_status:
+        | "previsto"
+        | "pago"
+        | "parcial"
+        | "vencido"
+        | "cancelado"
+      loan_kind:
+        | "emprestimo"
+        | "financiamento"
+        | "leasing"
+        | "antecipacao"
+        | "capital_giro"
+        | "outro"
+      loan_status:
+        | "ativo"
+        | "quitado"
+        | "inadimplente"
+        | "renegociado"
+        | "cancelado"
       sync_status: "pending" | "running" | "success" | "error" | "partial"
     }
     CompositeTypes: {
@@ -3388,6 +3621,28 @@ export const Constants = {
         "nfse_recebida",
       ],
       flow_type: ["operacional", "investimento", "financiamento"],
+      loan_installment_status: [
+        "previsto",
+        "pago",
+        "parcial",
+        "vencido",
+        "cancelado",
+      ],
+      loan_kind: [
+        "emprestimo",
+        "financiamento",
+        "leasing",
+        "antecipacao",
+        "capital_giro",
+        "outro",
+      ],
+      loan_status: [
+        "ativo",
+        "quitado",
+        "inadimplente",
+        "renegociado",
+        "cancelado",
+      ],
       sync_status: ["pending", "running", "success", "error", "partial"],
     },
   },
