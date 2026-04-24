@@ -879,6 +879,12 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
           bankAccountId: opts.bankAccountId ?? null,
         });
         break;
+      case "projetos":
+        r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: {}, upsert: (item) => upsertProjeto(item, opts.companyId) });
+        break;
+      case "tags":
+        r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: {}, upsert: (item) => upsertTag(item, opts.companyId) });
+        break;
     }
     results.push(r);
     totalInserted += r.inserted;
