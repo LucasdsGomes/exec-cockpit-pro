@@ -78,6 +78,15 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
     });
   };
 
+  const handleSyncCommitments = () => {
+    toast.promise(syncCommitments.mutateAsync(90), {
+      loading: "Sincronizando Pedidos de Venda e Ordens de Compra (últimos 90 dias)…",
+      success: (r) =>
+        `Compromissos sincronizados · ${r.totals?.inserted ?? 0} novos, ${r.totals?.updated ?? 0} atualizados`,
+      error: (e) => `Erro: ${e.message}`,
+    });
+  };
+
   if (health.isLoading) return <Skeleton className="h-96" />;
   const h = health.data;
 
@@ -123,6 +132,10 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
             <Button onClick={handleSyncStatements} disabled={syncStatements.isPending} variant="outline" className="w-full justify-start gap-2">
               {syncStatements.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileText className="size-4" />}
               Sincronizar extratos bancários (OMIE)
+            </Button>
+            <Button onClick={handleSyncCommitments} disabled={syncCommitments.isPending} variant="outline" className="w-full justify-start gap-2">
+              {syncCommitments.isPending ? <Loader2 className="size-4 animate-spin" /> : <ShoppingCart className="size-4" />}
+              Sincronizar Pedidos de Venda + OCs (OMIE)
             </Button>
             <Button onClick={handleReconcile} disabled={reconcile.isPending} variant="outline" className="w-full justify-start gap-2">
               {reconcile.isPending ? <Loader2 className="size-4 animate-spin" /> : <GitMerge className="size-4" />}
