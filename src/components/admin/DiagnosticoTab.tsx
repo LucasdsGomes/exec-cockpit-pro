@@ -211,6 +211,10 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
               {linkProjects.isPending ? <Loader2 className="size-4 animate-spin" /> : <Link2 className="size-4" />}
               Vincular lançamentos a projetos
             </Button>
+            <Button onClick={handleSyncLoans} disabled={syncLoans.isPending} variant="outline" className="w-full justify-start gap-2">
+              {syncLoans.isPending ? <Loader2 className="size-4 animate-spin" /> : <Landmark className="size-4" />}
+              Sincronizar Empréstimos & Financiamentos (OMIE)
+            </Button>
             <Button onClick={handleSyncCommitments} disabled={syncCommitments.isPending} variant="outline" className="w-full justify-start gap-2">
               {syncCommitments.isPending ? <Loader2 className="size-4 animate-spin" /> : <ShoppingCart className="size-4" />}
               Sincronizar Pedidos de Venda + OCs (OMIE)
