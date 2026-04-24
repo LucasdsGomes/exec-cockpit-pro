@@ -335,6 +335,7 @@ async function upsertCommitment(record: CommitmentRecord) {
 
   const enriched = {
     ...base,
+    source_record_id: base.source_record_id as string,
     customer_id,
     supplier_id,
     linked_financial_entry_id,
