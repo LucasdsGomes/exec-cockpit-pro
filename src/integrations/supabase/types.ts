@@ -1506,6 +1506,66 @@ export type Database = {
           },
         ]
       }
+      entry_tags: {
+        Row: {
+          company_id: string
+          created_at: string
+          financial_entry_id: string
+          id: string
+          tag_id: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          financial_entry_id: string
+          id?: string
+          tag_id: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          financial_entry_id?: string
+          id?: string
+          tag_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entry_tags_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entry_tags_financial_entry_id_fkey"
+            columns: ["financial_entry_id"]
+            isOneToOne: false
+            referencedRelation: "financial_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entry_tags_financial_entry_id_fkey"
+            columns: ["financial_entry_id"]
+            isOneToOne: false
+            referencedRelation: "v_unclassified_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entry_tags_financial_entry_id_fkey"
+            columns: ["financial_entry_id"]
+            isOneToOne: false
+            referencedRelation: "v_unclassified_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entry_tags_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "tags"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       financial_cycle_metrics: {
         Row: {
           ciclo_financeiro: number | null
@@ -1583,6 +1643,7 @@ export type Database = {
           imported_batch_id: string | null
           is_classified: boolean
           metadata: Json | null
+          project_id: string | null
           reference_date: string | null
           source_endpoint: string | null
           source_record_id: string | null
@@ -1622,6 +1683,7 @@ export type Database = {
           imported_batch_id?: string | null
           is_classified?: boolean
           metadata?: Json | null
+          project_id?: string | null
           reference_date?: string | null
           source_endpoint?: string | null
           source_record_id?: string | null
@@ -1661,6 +1723,7 @@ export type Database = {
           imported_batch_id?: string | null
           is_classified?: boolean
           metadata?: Json | null
+          project_id?: string | null
           reference_date?: string | null
           source_endpoint?: string | null
           source_record_id?: string | null
@@ -1705,6 +1768,13 @@ export type Database = {
             columns: ["imported_batch_id"]
             isOneToOne: false
             referencedRelation: "omie_raw_sync_batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financial_entries_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
           {
@@ -2424,6 +2494,65 @@ export type Database = {
           },
         ]
       }
+      projects: {
+        Row: {
+          active: boolean
+          code: string
+          company_id: string
+          created_at: string
+          end_date: string | null
+          id: string
+          metadata: Json | null
+          name: string
+          source_record_id: string | null
+          source_system: string
+          start_date: string | null
+          status: string | null
+          synced_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          code: string
+          company_id: string
+          created_at?: string
+          end_date?: string | null
+          id?: string
+          metadata?: Json | null
+          name: string
+          source_record_id?: string | null
+          source_system?: string
+          start_date?: string | null
+          status?: string | null
+          synced_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          code?: string
+          company_id?: string
+          created_at?: string
+          end_date?: string | null
+          id?: string
+          metadata?: Json | null
+          name?: string
+          source_record_id?: string | null
+          source_system?: string
+          start_date?: string | null
+          status?: string | null
+          synced_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "projects_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       receivable_entries: {
         Row: {
           amount: number
@@ -2625,6 +2754,59 @@ export type Database = {
             foreignKeyName: "sync_preferences_company_id_fkey"
             columns: ["company_id"]
             isOneToOne: true
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tags: {
+        Row: {
+          active: boolean
+          code: string
+          color: string | null
+          company_id: string
+          created_at: string
+          description: string
+          id: string
+          metadata: Json | null
+          source_record_id: string | null
+          source_system: string
+          synced_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          code: string
+          color?: string | null
+          company_id: string
+          created_at?: string
+          description: string
+          id?: string
+          metadata?: Json | null
+          source_record_id?: string | null
+          source_system?: string
+          synced_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          code?: string
+          color?: string | null
+          company_id?: string
+          created_at?: string
+          description?: string
+          id?: string
+          metadata?: Json | null
+          source_record_id?: string | null
+          source_system?: string
+          synced_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tags_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
             referencedRelation: "companies"
             referencedColumns: ["id"]
           },
@@ -2965,6 +3147,10 @@ export type Database = {
         Returns: boolean
       }
       is_company_admin: { Args: { _company_id: string }; Returns: boolean }
+      link_financial_entries_to_projects: {
+        Args: { _company: string }
+        Returns: Json
+      }
       list_cron_jobs: {
         Args: never
         Returns: {

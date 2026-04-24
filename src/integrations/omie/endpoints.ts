@@ -15,7 +15,9 @@ export type OmieEndpointKey =
   | "pedidos_venda"
   | "ordens_compra"
   | "notas_fiscais_emitidas"
-  | "notas_servico_emitidas";
+  | "notas_servico_emitidas"
+  | "projetos"
+  | "tags";
 
 export interface OmieEndpointDef {
   key: OmieEndpointKey;
@@ -125,11 +127,27 @@ export const OMIE_ENDPOINTS: Record<OmieEndpointKey, OmieEndpointDef> = {
     call: "ListarLancCC",
     idField: "nCodLanc",
   },
+  projetos: {
+    key: "projetos",
+    label: "Projetos",
+    endpoint: "geral/projetos",
+    call: "ListarProjetos",
+    idField: "codigo",
+  },
+  tags: {
+    key: "tags",
+    label: "Etiquetas (Tags)",
+    endpoint: "geral/etiquetas",
+    call: "ListarCadTags",
+    idField: "nCodCadTag",
+  },
 };
 
 export const OMIE_PRIORITY_ORDER: OmieEndpointKey[] = [
   "categorias",
   "centros_de_custo",
+  "projetos",
+  "tags",
   "contas_correntes",
   "saldos_bancarios",
   "clientes",
