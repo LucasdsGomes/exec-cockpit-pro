@@ -52,6 +52,35 @@ async function aggregate(
   return totals;
 }
 
+/**
+ * Aggregate from dre_competencia view (revenue from issued fiscal documents).
+ * Falls back to dre_base when the view returns nothing for the company/period
+ * (e.g. no fiscal documents synced yet).
+ */
+async function aggregateCompetencia(
+  companyId: string,
+  range: DateRange,
+  filters?: Pick<GlobalFilters, "costCenterId" | "businessUnit">,
+) {
+  // Note: dre_competencia view does not currently expose business_unit;
+  // cost_center_id filter applies only to managerial rows.
+  let q = supabase
+    .from("dre_competencia")
+    .select("dre_group, amount_signed, competence_date")
+    .eq("company_id", companyId)
+    .gte("competence_date", range.start)
+    .lte("competence_date", range.end);
+  if (filters?.costCenterId) q = q.eq("cost_center_id", filters.costCenterId);
+  void filters?.businessUnit;
+  const { data } = await q;
+  const totals = new Map<string, number>();
+  for (const r of data ?? []) {
+    const k = String(r.dre_group);
+    totals.set(k, (totals.get(k) ?? 0) + Number(r.amount_signed ?? 0));
+  }
+  return totals;
+}
+
 async function spark12m(companyId: string): Promise<Map<DreLineKey, number[]>> {
   const today = new Date();
   const start = new Date(today.getFullYear(), today.getMonth() - 11, 1);
@@ -88,18 +117,20 @@ export function useDreLines(
   companyId: string | null | undefined,
   period: string,
   filters?: Partial<GlobalFilters>,
+  regime: "caixa" | "competencia" = "caixa",
 ) {
   const cc = filters?.costCenterId ?? null;
   const bu = filters?.businessUnit ?? null;
   return useQuery({
-    queryKey: ["dreLines", companyId, period, cc, bu],
+    queryKey: ["dreLines", companyId, period, cc, bu, regime],
     enabled: !!companyId,
     queryFn: async (): Promise<DRELine[]> => {
       const range = periodToRange(period);
       const prev = previousRange(range);
+      const agg = regime === "competencia" ? aggregateCompetencia : aggregate;
       const [curr, prv, sparks] = await Promise.all([
-        aggregate(companyId!, range, { costCenterId: cc, businessUnit: bu }),
-        aggregate(companyId!, prev, { costCenterId: cc, businessUnit: bu }),
+        agg(companyId!, range, { costCenterId: cc, businessUnit: bu }),
+        agg(companyId!, prev, { costCenterId: cc, businessUnit: bu }),
         spark12m(companyId!),
       ]);
       const currSub = computeDreSubtotals(curr);
@@ -137,15 +168,18 @@ export function useDreWaterfall(
   companyId: string | null | undefined,
   period: string,
   filters?: Partial<GlobalFilters>,
+  regime: "caixa" | "competencia" = "caixa",
 ) {
   const cc = filters?.costCenterId ?? null;
   const bu = filters?.businessUnit ?? null;
   return useQuery({
-    queryKey: ["dreWaterfall", companyId, period, cc, bu],
+    queryKey: ["dreWaterfall", companyId, period, cc, bu, regime],
     enabled: !!companyId,
     queryFn: async (): Promise<WaterfallStep[]> => {
       const range = periodToRange(period);
-      const totals = await aggregate(companyId!, range, { costCenterId: cc, businessUnit: bu });
+      const totals = regime === "competencia"
+        ? await aggregateCompetencia(companyId!, range, { costCenterId: cc, businessUnit: bu })
+        : await aggregate(companyId!, range, { costCenterId: cc, businessUnit: bu });
       const sub = computeDreSubtotals(totals);
       const steps: WaterfallStep[] = [
         { name: "Receita líquida", value: sub.receitaLiquida + sub.outrasReceitas, type: "total" },
