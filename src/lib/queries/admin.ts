@@ -1234,3 +1234,125 @@ export function useFullSync(companyId: string | null | undefined) {
     },
   });
 }
+
+// ---------- Yalla Green model import ----------
+
+export function useImportYallaModel(companyId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (params?: { scenario?: "orcado" | "reprojetado"; clearExisting?: boolean }) => {
+      if (!companyId) throw new Error("Empresa não selecionada");
+      const res = await fetch("/api/public/hooks/import-yalla-modelo", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          companyId,
+          scenario: params?.scenario ?? "orcado",
+          clearExisting: params?.clearExisting ?? true,
+        }),
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(`HTTP ${res.status}: ${t}`);
+      }
+      return res.json() as Promise<{
+        ok: boolean;
+        source: string;
+        company: string;
+        scenario: string;
+        mapping_rows: number;
+        budget_rows: number;
+        months: number;
+      }>;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["categoryMappings", companyId] });
+      qc.invalidateQueries({ queryKey: ["budgetVsActual", companyId] });
+      qc.invalidateQueries({ queryKey: ["budgetEntries", companyId] });
+    },
+  });
+}
+
+// ---------- Previsto x Realizado ----------
+
+export interface BudgetVsActualRow {
+  managerial_account: string;
+  period: string; // YYYY-MM-DD (first day of month)
+  budget: number;
+  actual: number;
+  variance: number;
+  variance_pct: number | null;
+}
+
+export function useBudgetVsActual(
+  companyId: string | null | undefined,
+  opts: { from: string; to: string; scenario?: "orcado" | "reprojetado" },
+) {
+  return useQuery({
+    queryKey: ["budgetVsActual", companyId, opts.from, opts.to, opts.scenario ?? "orcado"],
+    enabled: !!companyId,
+    queryFn: async (): Promise<BudgetVsActualRow[]> => {
+      const scenario = opts.scenario ?? "orcado";
+      const [budgetRes, actualRes] = await Promise.all([
+        supabase
+          .from("budget_entries")
+          .select("managerial_account, reference_period, amount")
+          .eq("company_id", companyId!)
+          .eq("scenario", scenario)
+          .gte("reference_period", opts.from)
+          .lte("reference_period", opts.to),
+        supabase
+          .from("dre_base")
+          .select("category_mapped, dre_group, dre_subgroup, competence_date, amount_signed")
+          .eq("company_id", companyId!)
+          .gte("competence_date", opts.from)
+          .lte("competence_date", opts.to),
+      ]);
+      if (budgetRes.error) throw budgetRes.error;
+      if (actualRes.error) throw actualRes.error;
+
+      const monthKey = (d: string) => d.slice(0, 7) + "-01";
+      type Bucket = { budget: number; actual: number };
+      const buckets = new Map<string, Bucket>();
+      const key = (acc: string, period: string) => `${acc}::${period}`;
+
+      for (const b of budgetRes.data ?? []) {
+        const k = key(b.managerial_account, monthKey(b.reference_period));
+        const cur = buckets.get(k) ?? { budget: 0, actual: 0 };
+        cur.budget += Number(b.amount ?? 0);
+        buckets.set(k, cur);
+      }
+      for (const a of actualRes.data ?? []) {
+        // Match actuals to budget accounts by category_mapped first; fallback to dre_subgroup or dre_group.
+        const acc = a.category_mapped ?? a.dre_subgroup ?? a.dre_group;
+        if (!acc) continue;
+        const k = key(acc, monthKey(a.competence_date));
+        const cur = buckets.get(k) ?? { budget: 0, actual: 0 };
+        cur.actual += Number(a.amount_signed ?? 0);
+        buckets.set(k, cur);
+      }
+
+      const rows: BudgetVsActualRow[] = [];
+      for (const [k, v] of buckets) {
+        const [acc, period] = k.split("::");
+        const variance = v.actual - v.budget;
+        const variance_pct = v.budget !== 0 ? (variance / Math.abs(v.budget)) * 100 : null;
+        rows.push({
+          managerial_account: acc,
+          period,
+          budget: v.budget,
+          actual: v.actual,
+          variance,
+          variance_pct,
+        });
+      }
+      rows.sort((a, b) =>
+        a.managerial_account.localeCompare(b.managerial_account) || a.period.localeCompare(b.period),
+      );
+      return rows;
+    },
+  });
+}
