@@ -926,7 +926,7 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
       supabaseAdmin.rpc("link_financial_entries_to_projects", { _company: opts.companyId }),
       supabaseAdmin.rpc("compute_balance_projection", { _company: opts.companyId, _date: today }),
     ]);
-    logCtx("info", "post-sync processing done");
+    logCtx("info", "post-sync processing done", {});
   } catch (e) {
     logCtx("warn", "post-sync processing failed", { error: e instanceof Error ? e.message : String(e) });
   }
