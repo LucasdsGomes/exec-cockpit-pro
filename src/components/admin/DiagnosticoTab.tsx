@@ -1,11 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Activity, CheckCircle2, AlertTriangle, Clock, Database, Loader2, Wrench, Link2, FileText, GitMerge, ShoppingCart, Receipt, Banknote, ArrowLeftRight, FolderKanban, Tag, Landmark, DownloadCloud } from "lucide-react";
-import { useSystemHealth, useCronJobs, useBackfillBalance, useMirrorApAr, useBackfillRefs } from "@/lib/queries/health";
-import { useSyncBankStatements, useReconcileBankMovements, useSyncCommercialCommitments, useCommercialCommitmentsSummary, useSyncFiscalDocuments, useFiscalDocumentsSummary, useSyncLancamentosCC, usePairBankTransfers, useBankMovementsSummary, useSyncProjectsAndTags, useLinkEntriesToProjects, useProjectsSummary, useSyncLoans, useLoansSummary, useFullSync } from "@/lib/queries/admin";
-import { toast } from "sonner";
+import { Activity, CheckCircle2, AlertTriangle, ShoppingCart, Receipt, Banknote, FolderKanban, Tag, Landmark } from "lucide-react";
+import { useSystemHealth, useCronJobs } from "@/lib/queries/health";
+import { useCommercialCommitmentsSummary, useFiscalDocumentsSummary, useBankMovementsSummary, useProjectsSummary, useLoansSummary } from "@/lib/queries/admin";
 
 function fmt(d: string | null) {
   if (!d) return "—";
@@ -29,147 +27,22 @@ const COUNT_LABELS: Record<string, string> = {
 export function DiagnosticoTab({ companyId }: { companyId: string | null | undefined }) {
   const health = useSystemHealth(companyId);
   const cron = useCronJobs();
-  const backfill = useBackfillBalance(companyId);
-  const mirror = useMirrorApAr(companyId);
-  const refs = useBackfillRefs(companyId);
-  const syncStatements = useSyncBankStatements(companyId);
-  const reconcile = useReconcileBankMovements(companyId);
-  const syncCommitments = useSyncCommercialCommitments(companyId);
   const commitments = useCommercialCommitmentsSummary(companyId);
-  const syncFiscal = useSyncFiscalDocuments(companyId);
   const fiscal = useFiscalDocumentsSummary(companyId);
-  const syncLancCC = useSyncLancamentosCC(companyId);
-  const pairTransfers = usePairBankTransfers(companyId);
   const bmSummary = useBankMovementsSummary(companyId);
-  const syncProjects = useSyncProjectsAndTags(companyId);
-  const linkProjects = useLinkEntriesToProjects(companyId);
   const projects = useProjectsSummary(companyId);
-  const syncLoans = useSyncLoans(companyId);
   const loans = useLoansSummary(companyId);
-  const fullSync = useFullSync(companyId);
-
-  const handleBackfill = () => {
-    toast.promise(backfill.mutateAsync(30), {
-      loading: "Recalculando balanço dos últimos 30 dias...",
-      success: (r) => `Balanço recalculado para ${r.processed} dias`,
-      error: (e) => `Erro: ${e.message}`,
-    });
-  };
-
-  const handleMirror = () => {
-    toast.promise(mirror.mutateAsync(), {
-      loading: "Espelhando contas a pagar/receber...",
-      success: "Espelhamento concluído",
-      error: (e) => `Erro: ${e.message}`,
-    });
-  };
-
-  const handleBackfillRefs = () => {
-    toast.promise(refs.mutateAsync(), {
-      loading: "Reprocessando vínculos (banco, fornecedor, cliente)...",
-      success: (r) =>
-        `Vínculos atualizados em ${r.reprocess.entries_updated} lançamentos · DRE ${r.propagate.dre_base ?? 0}, DFC ${r.propagate.dfc_forecast_base ?? 0}`,
-      error: (e) => `Erro: ${e.message}`,
-    });
-  };
-
-  const handleSyncStatements = () => {
-    toast.promise(syncStatements.mutateAsync(90), {
-      loading: "Sincronizando extratos bancários (últimos 90 dias)…",
-      success: "Extratos sincronizados",
-      error: (e) => `Erro: ${e.message}`,
-    });
-  };
-
-  const handleReconcile = () => {
-    toast.promise(reconcile.mutateAsync(), {
-      loading: "Conciliando movimentos com títulos…",
-      success: (r) => `${r.matched} movimento(s) conciliado(s)`,
-      error: (e) => `Erro: ${e.message}`,
-    });
-  };
-
-  const handleSyncCommitments = () => {
-    toast.promise(syncCommitments.mutateAsync(90), {
-      loading: "Sincronizando Pedidos de Venda e Ordens de Compra (últimos 90 dias)…",
-      success: (r) =>
-        `Compromissos sincronizados · ${r.totals?.inserted ?? 0} novos, ${r.totals?.updated ?? 0} atualizados`,
-      error: (e) => `Erro: ${e.message}`,
-    });
-  };
-
-  const handleSyncFiscal = () => {
-    toast.promise(syncFiscal.mutateAsync(90), {
-      loading: "Sincronizando NF-e e NFS-e emitidas (últimos 90 dias)…",
-      success: (r) =>
-        `Notas fiscais sincronizadas · ${r.totals?.inserted ?? 0} novas, ${r.totals?.updated ?? 0} atualizadas`,
-      error: (e) => `Erro: ${e.message}`,
-    });
-  };
-
-  const handleSyncLancCC = () => {
-    toast.promise(syncLancCC.mutateAsync(90), {
-      loading: "Sincronizando lançamentos de conta corrente (últimos 90 dias)…",
-      success: (r) =>
-        `Lançamentos CC sincronizados · ${r.totals?.inserted ?? 0} novos, ${r.totals?.updated ?? 0} atualizados`,
-      error: (e) => `Erro: ${e.message}`,
-    });
-  };
-
-  const handlePairTransfers = () => {
-    toast.promise(pairTransfers.mutateAsync(), {
-      loading: "Identificando transferências internas…",
-      success: (r) => `${r.paired} movimento(s) vinculado(s) como transferência`,
-      error: (e) => `Erro: ${e.message}`,
-    });
-  };
-
-  const handleSyncProjects = () => {
-    toast.promise(syncProjects.mutateAsync(), {
-      loading: "Sincronizando projetos e etiquetas (Omie)…",
-      success: (r) =>
-        `Projetos & Tags · ${r.totals?.inserted ?? 0} novos, ${r.totals?.updated ?? 0} atualizados`,
-      error: (e) => `Erro: ${e.message}`,
-    });
-  };
-
-  const handleLinkProjects = () => {
-    toast.promise(linkProjects.mutateAsync(), {
-      loading: "Vinculando lançamentos a projetos…",
-      success: (r) => `${r.linked} lançamento(s) vinculado(s) a projetos`,
-      error: (e) => `Erro: ${e.message}`,
-    });
-  };
-
-  const handleSyncLoans = () => {
-    toast.promise(syncLoans.mutateAsync(), {
-      loading: "Sincronizando contratos de empréstimo (Omie)…",
-      success: (r) =>
-        `Empréstimos · ${r.totals?.inserted ?? 0} novos, ${r.totals?.updated ?? 0} atualizados`,
-      error: (e) => `Erro: ${e.message}`,
-    });
-  };
-
-  const handleFullSync = () => {
-    if (!confirm("Isso vai recarregar TODOS os endpoints da Omie desde 2015. Pode demorar vários minutos. Continuar?")) return;
-    toast.promise(fullSync.mutateAsync(), {
-      loading: "Sincronização completa em andamento (pode levar minutos)…",
-      success: (r) => {
-        const t = r.totals;
-        const okCount = (r.endpoints ?? []).filter((e) => e.errors === 0).length;
-        const total = (r.endpoints ?? []).length;
-        return `Sync completa · ${okCount}/${total} endpoints · ${t?.inserted ?? 0} novos, ${t?.updated ?? 0} atualizados`;
-      },
-      error: (e) => `Erro: ${e.message}`,
-    });
-  };
 
   if (health.isLoading) return <Skeleton className="h-96" />;
   const h = health.data;
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+        Esta aba é apenas leitura. Use os botões <strong>Sincronizar agora</strong> e <strong>Sincronizar tudo</strong> no topo da página. As ações de pós-processamento (transferências internas, conciliação, vínculos, recálculo de balanço) rodam automaticamente após cada sincronização.
+      </div>
+
+      <div className="grid grid-cols-1 gap-4">
         <Card className="bg-card border-border">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
@@ -188,71 +61,6 @@ export function DiagnosticoTab({ companyId }: { companyId: string | null | undef
                   : "—"
               }
             />
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card border-border">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Wrench className="size-4 text-primary" /> Ações de manutenção
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <Button onClick={handleFullSync} disabled={fullSync.isPending} variant="default" className="w-full justify-start gap-2">
-              {fullSync.isPending ? <Loader2 className="size-4 animate-spin" /> : <DownloadCloud className="size-4" />}
-              Sincronizar TUDO desde o início (full reload)
-            </Button>
-            <Button onClick={handleMirror} disabled={mirror.isPending} variant="outline" className="w-full justify-start gap-2">
-              {mirror.isPending ? <Loader2 className="size-4 animate-spin" /> : <Database className="size-4" />}
-              Espelhar Contas a Pagar / Receber
-            </Button>
-            <Button onClick={handleBackfillRefs} disabled={refs.isPending} variant="outline" className="w-full justify-start gap-2">
-              {refs.isPending ? <Loader2 className="size-4 animate-spin" /> : <Link2 className="size-4" />}
-              Reprocessar vínculos OMIE (banco / cliente / fornecedor)
-            </Button>
-            <Button onClick={handleSyncStatements} disabled={syncStatements.isPending} variant="outline" className="w-full justify-start gap-2">
-              {syncStatements.isPending ? <Loader2 className="size-4 animate-spin" /> : <FileText className="size-4" />}
-              Sincronizar extratos bancários (OMIE)
-            </Button>
-            <Button onClick={handleSyncLancCC} disabled={syncLancCC.isPending} variant="outline" className="w-full justify-start gap-2">
-              {syncLancCC.isPending ? <Loader2 className="size-4 animate-spin" /> : <Banknote className="size-4" />}
-              Sincronizar Lançamentos de Conta Corrente
-            </Button>
-            <Button onClick={handlePairTransfers} disabled={pairTransfers.isPending} variant="outline" className="w-full justify-start gap-2">
-              {pairTransfers.isPending ? <Loader2 className="size-4 animate-spin" /> : <ArrowLeftRight className="size-4" />}
-              Identificar transferências internas
-            </Button>
-            <Button onClick={handleSyncProjects} disabled={syncProjects.isPending} variant="outline" className="w-full justify-start gap-2">
-              {syncProjects.isPending ? <Loader2 className="size-4 animate-spin" /> : <FolderKanban className="size-4" />}
-              Sincronizar Projetos + Tags (OMIE)
-            </Button>
-            <Button onClick={handleLinkProjects} disabled={linkProjects.isPending} variant="outline" className="w-full justify-start gap-2">
-              {linkProjects.isPending ? <Loader2 className="size-4 animate-spin" /> : <Link2 className="size-4" />}
-              Vincular lançamentos a projetos
-            </Button>
-            <Button onClick={handleSyncLoans} disabled={syncLoans.isPending} variant="outline" className="w-full justify-start gap-2">
-              {syncLoans.isPending ? <Loader2 className="size-4 animate-spin" /> : <Landmark className="size-4" />}
-              Sincronizar Empréstimos & Financiamentos (OMIE)
-            </Button>
-            <Button onClick={handleSyncCommitments} disabled={syncCommitments.isPending} variant="outline" className="w-full justify-start gap-2">
-              {syncCommitments.isPending ? <Loader2 className="size-4 animate-spin" /> : <ShoppingCart className="size-4" />}
-              Sincronizar Pedidos de Venda + OCs (OMIE)
-            </Button>
-            <Button onClick={handleSyncFiscal} disabled={syncFiscal.isPending} variant="outline" className="w-full justify-start gap-2">
-              {syncFiscal.isPending ? <Loader2 className="size-4 animate-spin" /> : <Receipt className="size-4" />}
-              Sincronizar Notas Fiscais (NF-e + NFS-e)
-            </Button>
-            <Button onClick={handleReconcile} disabled={reconcile.isPending} variant="outline" className="w-full justify-start gap-2">
-              {reconcile.isPending ? <Loader2 className="size-4 animate-spin" /> : <GitMerge className="size-4" />}
-              Conciliar movimentos ↔ títulos
-            </Button>
-            <Button onClick={handleBackfill} disabled={backfill.isPending} variant="outline" className="w-full justify-start gap-2">
-              {backfill.isPending ? <Loader2 className="size-4 animate-spin" /> : <Clock className="size-4" />}
-              Recalcular balanço (últimos 30 dias)
-            </Button>
-            <p className="text-xs text-muted-foreground pt-1">
-              Use estas ações para forçar uma reconciliação manual fora do cron diário.
-            </p>
           </CardContent>
         </Card>
       </div>
