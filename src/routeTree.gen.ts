@@ -20,6 +20,7 @@ import { Route as AppCicloFinanceiroRouteImport } from './routes/_app.ciclo-fina
 import { Route as AppAdminRouteImport } from './routes/_app.admin'
 import { Route as ApiPublicHooksOmieSyncNowRouteImport } from './routes/api/public/hooks/omie-sync-now'
 import { Route as ApiPublicHooksOmieSyncRouteImport } from './routes/api/public/hooks/omie-sync'
+import { Route as ApiPublicHooksImportYallaModeloRouteImport } from './routes/api/public/hooks/import-yalla-modelo'
 
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
@@ -76,6 +77,12 @@ const ApiPublicHooksOmieSyncRoute = ApiPublicHooksOmieSyncRouteImport.update({
   path: '/api/public/hooks/omie-sync',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicHooksImportYallaModeloRoute =
+  ApiPublicHooksImportYallaModeloRouteImport.update({
+    id: '/api/public/hooks/import-yalla-modelo',
+    path: '/api/public/hooks/import-yalla-modelo',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -86,6 +93,7 @@ export interface FileRoutesByFullPath {
   '/dre': typeof AppDreRoute
   '/fluxo-de-caixa': typeof AppFluxoDeCaixaRoute
   '/projecao-balanco': typeof AppProjecaoBalancoRoute
+  '/api/public/hooks/import-yalla-modelo': typeof ApiPublicHooksImportYallaModeloRoute
   '/api/public/hooks/omie-sync': typeof ApiPublicHooksOmieSyncRoute
   '/api/public/hooks/omie-sync-now': typeof ApiPublicHooksOmieSyncNowRoute
 }
@@ -98,6 +106,7 @@ export interface FileRoutesByTo {
   '/fluxo-de-caixa': typeof AppFluxoDeCaixaRoute
   '/projecao-balanco': typeof AppProjecaoBalancoRoute
   '/': typeof AppIndexRoute
+  '/api/public/hooks/import-yalla-modelo': typeof ApiPublicHooksImportYallaModeloRoute
   '/api/public/hooks/omie-sync': typeof ApiPublicHooksOmieSyncRoute
   '/api/public/hooks/omie-sync-now': typeof ApiPublicHooksOmieSyncNowRoute
 }
@@ -112,6 +121,7 @@ export interface FileRoutesById {
   '/_app/fluxo-de-caixa': typeof AppFluxoDeCaixaRoute
   '/_app/projecao-balanco': typeof AppProjecaoBalancoRoute
   '/_app/': typeof AppIndexRoute
+  '/api/public/hooks/import-yalla-modelo': typeof ApiPublicHooksImportYallaModeloRoute
   '/api/public/hooks/omie-sync': typeof ApiPublicHooksOmieSyncRoute
   '/api/public/hooks/omie-sync-now': typeof ApiPublicHooksOmieSyncNowRoute
 }
@@ -126,6 +136,7 @@ export interface FileRouteTypes {
     | '/dre'
     | '/fluxo-de-caixa'
     | '/projecao-balanco'
+    | '/api/public/hooks/import-yalla-modelo'
     | '/api/public/hooks/omie-sync'
     | '/api/public/hooks/omie-sync-now'
   fileRoutesByTo: FileRoutesByTo
@@ -138,6 +149,7 @@ export interface FileRouteTypes {
     | '/fluxo-de-caixa'
     | '/projecao-balanco'
     | '/'
+    | '/api/public/hooks/import-yalla-modelo'
     | '/api/public/hooks/omie-sync'
     | '/api/public/hooks/omie-sync-now'
   id:
@@ -151,6 +163,7 @@ export interface FileRouteTypes {
     | '/_app/fluxo-de-caixa'
     | '/_app/projecao-balanco'
     | '/_app/'
+    | '/api/public/hooks/import-yalla-modelo'
     | '/api/public/hooks/omie-sync'
     | '/api/public/hooks/omie-sync-now'
   fileRoutesById: FileRoutesById
@@ -159,6 +172,7 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   AuthRoute: typeof AuthRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
+  ApiPublicHooksImportYallaModeloRoute: typeof ApiPublicHooksImportYallaModeloRoute
   ApiPublicHooksOmieSyncRoute: typeof ApiPublicHooksOmieSyncRoute
   ApiPublicHooksOmieSyncNowRoute: typeof ApiPublicHooksOmieSyncNowRoute
 }
@@ -242,6 +256,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksOmieSyncRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/import-yalla-modelo': {
+      id: '/api/public/hooks/import-yalla-modelo'
+      path: '/api/public/hooks/import-yalla-modelo'
+      fullPath: '/api/public/hooks/import-yalla-modelo'
+      preLoaderRoute: typeof ApiPublicHooksImportYallaModeloRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -269,6 +290,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   AuthRoute: AuthRoute,
   ResetPasswordRoute: ResetPasswordRoute,
+  ApiPublicHooksImportYallaModeloRoute: ApiPublicHooksImportYallaModeloRoute,
   ApiPublicHooksOmieSyncRoute: ApiPublicHooksOmieSyncRoute,
   ApiPublicHooksOmieSyncNowRoute: ApiPublicHooksOmieSyncNowRoute,
 }

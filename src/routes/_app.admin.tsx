@@ -25,6 +25,7 @@ import { BudgetTab } from "@/components/admin/BudgetTab";
 import { DiagnosticoTab } from "@/components/admin/DiagnosticoTab";
 import { CostCenterRulesTab } from "@/components/admin/CostCenterRulesTab";
 import { UnassignedEntriesTab } from "@/components/admin/UnassignedEntriesTab";
+import { PrevistoRealizadoTab } from "@/components/admin/PrevistoRealizadoTab";
 
 export const Route = createFileRoute("/_app/admin")({
   head: () => ({
@@ -114,6 +115,7 @@ function AdminPage() {
           <TabsTrigger value="ccrules">Centro de Custo</TabsTrigger>
           <TabsTrigger value="semcc">Sem CC</TabsTrigger>
           <TabsTrigger value="orcamento">Orçamento</TabsTrigger>
+          <TabsTrigger value="previsto">Previsto x Realizado</TabsTrigger>
           <TabsTrigger value="ajustes">Ajustes</TabsTrigger>
           <TabsTrigger value="parametros">Parâmetros</TabsTrigger>
           <TabsTrigger value="fila">Fila ({unclassified.data?.length ?? 0})</TabsTrigger>
@@ -271,6 +273,10 @@ function AdminPage() {
 
         <TabsContent value="orcamento" className="mt-4">
           <BudgetTab companyId={cid} />
+        </TabsContent>
+
+        <TabsContent value="previsto" className="mt-4">
+          <PrevistoRealizadoTab companyId={cid} />
         </TabsContent>
 
         <TabsContent value="ajustes" className="mt-4">
