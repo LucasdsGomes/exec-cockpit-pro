@@ -96,6 +96,9 @@ export function InitialBalancesTab({ companyId }: { companyId: string | null | u
     0,
   );
 
+  const hasOmieBalances = (omieBalances.data ?? []).length > 0;
+  const nonBankBalances = (list.data ?? []).filter((b) => !b.bank_account_id && b.balance_type !== "caixa");
+
   const handleResync = (bankAccountId: string) => {
     toast.promise(syncOne.mutateAsync({ lookbackDays: 90, bankAccountId }), {
       loading: "Resincronizando extrato dessa conta…",
