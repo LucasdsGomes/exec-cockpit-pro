@@ -7,7 +7,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Trash2, Plus, Wallet, Sparkles, RefreshCw, Upload, FileText, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
+import { Trash2, Plus, Wallet, Sparkles, RefreshCw, Upload, FileText, AlertTriangle, CheckCircle2, Loader2, ChevronDown, Package } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
 import { BRL } from "@/lib/format";
 import {
@@ -33,6 +34,8 @@ const TYPES = [
   { value: "outros_passivos", label: "Outros passivos" },
   { value: "capital", label: "Capital social" },
 ];
+
+const NON_BANK_TYPES = TYPES.filter((t) => t.value !== "caixa");
 
 export function InitialBalancesTab({ companyId }: { companyId: string | null | undefined }) {
   const list = useInitialBalances(companyId);
@@ -92,6 +95,9 @@ export function InitialBalancesTab({ companyId }: { companyId: string | null | u
     (sum, b) => sum + (Number((draft[b.id] ?? "0").replace(",", ".")) || 0),
     0,
   );
+
+  const hasOmieBalances = (omieBalances.data ?? []).length > 0;
+  const nonBankBalances = (list.data ?? []).filter((b) => !b.bank_account_id && b.balance_type !== "caixa");
 
   const handleResync = (bankAccountId: string) => {
     toast.promise(syncOne.mutateAsync({ lookbackDays: 90, bankAccountId }), {
@@ -159,10 +165,13 @@ export function InitialBalancesTab({ companyId }: { companyId: string | null | u
           {omieBalances.isLoading ? (
             <Skeleton className="h-24" />
           ) : (omieBalances.data ?? []).length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Nenhum saldo sincronizado ainda. Rode um sync na aba Diagnóstico para puxar os saldos atuais do Omie.
-              Enquanto isso, o cálculo de caixa usa os saldos manuais abaixo.
-            </p>
+            <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning flex items-start gap-2">
+              <AlertTriangle className="size-4 mt-0.5 shrink-0" />
+              <div>
+                <strong>Sem saldo do Omie.</strong> Clique em <strong>Sincronizar tudo</strong> no topo da página para puxar os saldos atuais.
+                Enquanto isso, o caixa usa os saldos manuais do modo avançado abaixo.
+              </div>
+            </div>
           ) : (
             <>
               <table className="w-full text-sm">
@@ -292,6 +301,62 @@ export function InitialBalancesTab({ companyId }: { companyId: string | null | u
         </CardContent>
       </Card>
 
+      {/* Outros ativos e passivos (não-bancários) — sempre visível */}
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Package className="size-4 text-primary" /> Outros ativos e passivos
+          </CardTitle>
+          <p className="text-xs text-muted-foreground mt-1">
+            Saldos que o Omie não fornece: estoque, imobilizado, empréstimos não-Omie, capital social.
+          </p>
+        </CardHeader>
+        <CardContent>
+          {nonBankBalances.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum saldo cadastrado. Use o formulário no modo avançado abaixo.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
+                  <th className="py-2.5">Conta</th>
+                  <th className="py-2.5">Tipo</th>
+                  <th className="py-2.5">Data referência</th>
+                  <th className="py-2.5 text-right">Valor</th>
+                  <th className="py-2.5"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {nonBankBalances.map((b) => (
+                  <tr key={b.id} className="border-b border-border/60">
+                    <td className="py-2">{b.account_label ?? "—"}</td>
+                    <td className="py-2 text-xs text-muted-foreground">{b.balance_type}</td>
+                    <td className="py-2 text-xs">{b.reference_date}</td>
+                    <td className="py-2 text-right tabular-nums font-medium">{BRL(Number(b.amount))}</td>
+                    <td className="py-2 text-right">
+                      <Button size="sm" variant="ghost" onClick={() => del.mutate(b.id)} className="text-destructive hover:text-destructive">
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Modo avançado: wizard manual de saldo bancário + formulário livre */}
+      <Collapsible defaultOpen={!hasOmieBalances}>
+        <CollapsibleTrigger asChild>
+          <Button variant="outline" className="w-full justify-between gap-2 h-9">
+            <span className="text-xs font-medium">
+              {hasOmieBalances ? "Modo manual (avançado)" : "Entrada manual de saldos"}
+            </span>
+            <ChevronDown className="size-3.5" />
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="mt-3 space-y-4">
+
       {/* Wizard de saldo inicial por conta bancária */}
       <Card className="border-primary/30 bg-card surface-card" style={{ backgroundImage: "var(--gradient-kpi-accent)" }}>
         <CardHeader>
@@ -299,7 +364,7 @@ export function InitialBalancesTab({ companyId }: { companyId: string | null | u
             <Wallet className="size-4 text-primary" /> Saldo de abertura por conta bancária
           </CardTitle>
           <p className="text-xs text-muted-foreground mt-1">
-            Informe o saldo atual de cada conta para o caixa do balanço refletir a realidade. {(banks.data ?? []).length} contas ativas.
+            Use apenas se não houver saldo do Omie sincronizado. {(banks.data ?? []).length} contas ativas.
           </p>
         </CardHeader>
         <CardContent>
@@ -371,7 +436,7 @@ export function InitialBalancesTab({ companyId }: { companyId: string | null | u
               <Select value={form.balance_type} onValueChange={(v) => setForm({ ...form, balance_type: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                  {(hasOmieBalances ? NON_BANK_TYPES : TYPES).map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -402,7 +467,7 @@ export function InitialBalancesTab({ companyId }: { companyId: string | null | u
       </Card>
 
       <Card className="bg-card border-border">
-        <CardHeader><CardTitle className="text-base">Saldos cadastrados</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">Todos os saldos cadastrados</CardTitle></CardHeader>
         <CardContent>
           {list.isLoading ? <Skeleton className="h-32" /> : (list.data ?? []).length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhum saldo inicial cadastrado.</p>
@@ -441,6 +506,9 @@ export function InitialBalancesTab({ companyId }: { companyId: string | null | u
           )}
         </CardContent>
       </Card>
+
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }

@@ -311,6 +311,23 @@ export function useCategoryMappings(companyId: string | null | undefined) {
   });
 }
 
+export function useUpdateCategoryMapping(companyId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (params: { id: string; dre_category?: string | null; dfc_category?: string | null }) => {
+      const patch: { dre_category?: string | null; dfc_category?: string | null } = {};
+      if ("dre_category" in params) patch.dre_category = params.dre_category ?? null;
+      if ("dfc_category" in params) patch.dfc_category = params.dfc_category ?? null;
+      const { error } = await supabase.from("category_mapping").update(patch).eq("id", params.id);
+      if (error) throw error;
+      return { id: params.id };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["categoryMappings", companyId] });
+    },
+  });
+}
+
 export interface InitialBalanceRow {
   id: string;
   account_label: string | null;

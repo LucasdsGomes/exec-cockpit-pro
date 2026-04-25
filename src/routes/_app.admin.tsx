@@ -4,8 +4,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { CheckCircle2, RefreshCw, Plug, AlertTriangle, FileWarning, Loader2 } from "lucide-react";
-import { useState, useMemo } from "react";
+import { CheckCircle2, RefreshCw, Plug, AlertTriangle, FileWarning, Loader2, DownloadCloud } from "lucide-react";
+import { useMemo } from "react";
 import { toast } from "sonner";
 import { BRL } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,6 +17,7 @@ import {
   useUnclassifiedEntries,
   useTriggerSync,
   useReclassify,
+  useFullSync,
 } from "@/lib/queries/admin";
 import { InitialBalancesTab } from "@/components/admin/InitialBalancesTab";
 import { ManualEntriesTab } from "@/components/admin/ManualEntriesTab";
@@ -26,6 +27,7 @@ import { DiagnosticoTab } from "@/components/admin/DiagnosticoTab";
 import { CostCenterRulesTab } from "@/components/admin/CostCenterRulesTab";
 import { UnassignedEntriesTab } from "@/components/admin/UnassignedEntriesTab";
 import { PrevistoRealizadoTab } from "@/components/admin/PrevistoRealizadoTab";
+import { PlanoContasTab } from "@/components/admin/PlanoContasTab";
 
 export const Route = createFileRoute("/_app/admin")({
   head: () => ({
@@ -53,13 +55,24 @@ function AdminPage() {
   const unclassified = useUnclassifiedEntries(cid);
   const triggerSync = useTriggerSync(cid);
   const reclassify = useReclassify(cid);
-
-  const [filterUnmapped, setFilterUnmapped] = useState(false);
+  const fullSync = useFullSync(cid);
 
   const handleSync = () => {
     toast.promise(triggerSync.mutateAsync(), {
-      loading: "Disparando sincronização OMIE...",
-      success: "Sincronização iniciada com sucesso",
+      loading: "Sincronizando últimos 7 dias...",
+      success: "Sincronização concluída",
+      error: (e) => `Erro: ${e.message}`,
+    });
+  };
+
+  const handleFullSync = () => {
+    if (!confirm("Isso vai recarregar TODOS os endpoints da Omie desde o início (~10 anos). Pode demorar vários minutos. Continuar?")) return;
+    toast.promise(fullSync.mutateAsync(), {
+      loading: "Sincronização completa em andamento (pode levar minutos)…",
+      success: (r) => {
+        const t = r.totals;
+        return `Sync completa · ${t?.inserted ?? 0} novos, ${t?.updated ?? 0} atualizados`;
+      },
       error: (e) => `Erro: ${e.message}`,
     });
   };
@@ -71,11 +84,6 @@ function AdminPage() {
       error: (e) => `Erro: ${e.message}`,
     });
   };
-
-  const filteredMappings = useMemo(() => {
-    const list = mappings.data ?? [];
-    return filterUnmapped ? list.filter((m) => !m.dre_category && !m.dfc_category) : list;
-  }, [mappings.data, filterUnmapped]);
 
   const lastByEndpoint = useMemo(() => {
     const map = new Map<string, NonNullable<typeof batches.data>[number]>();
@@ -92,17 +100,17 @@ function AdminPage() {
           <div className="text-[11px] uppercase tracking-[0.2em] text-primary font-medium">Configurações</div>
           <h1 className="text-xl md:text-2xl font-semibold tracking-tight mt-1">Administração</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {company?.name ?? "—"} · Integrações OMIE, DE-PARA gerencial e ajustes
+            {company?.name ?? "—"} · Sincronização Omie, plano de contas e ajustes
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" onClick={handleReclassify} disabled={reclassify.isPending} className="gap-2">
-            {reclassify.isPending ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-            Reprocessar
+          <Button variant="outline" onClick={handleFullSync} disabled={fullSync.isPending} className="gap-2">
+            {fullSync.isPending ? <Loader2 className="size-4 animate-spin" /> : <DownloadCloud className="size-4" />}
+            Sincronizar tudo
           </Button>
           <Button onClick={handleSync} disabled={triggerSync.isPending} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
             {triggerSync.isPending ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-            Sincronizar OMIE
+            Sincronizar agora
           </Button>
         </div>
       </header>
@@ -110,7 +118,7 @@ function AdminPage() {
       <Tabs defaultValue="integracoes">
         <TabsList className="bg-card border border-border w-full justify-start overflow-x-auto tabs-scroll h-auto flex-nowrap">
           <TabsTrigger value="integracoes">Integrações</TabsTrigger>
-          <TabsTrigger value="depara">DE-PARA ({mappings.data?.length ?? 0})</TabsTrigger>
+          <TabsTrigger value="plano">Plano de Contas ({mappings.data?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="saldos">Saldos iniciais</TabsTrigger>
           <TabsTrigger value="ccrules">Centro de Custo</TabsTrigger>
           <TabsTrigger value="semcc">Sem CC</TabsTrigger>
@@ -136,7 +144,7 @@ function AdminPage() {
                 <Field label="Slug" value={company?.slug ?? "—"} />
                 <Field label="Base URL" value="https://app.omie.com.br/api/v1/" />
                 <p className="text-xs text-muted-foreground">
-                  Credenciais armazenadas como secrets. Use "Sincronizar OMIE" para iniciar um novo batch.
+                  Credenciais armazenadas como secrets. Use <strong>Sincronizar agora</strong> (últimos 7 dias) ou <strong>Sincronizar tudo</strong> (full reload). O cron diário também roda automaticamente.
                 </p>
               </CardContent>
             </Card>
@@ -197,66 +205,8 @@ function AdminPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="depara" className="mt-4">
-          <Card className="bg-card border-border">
-            <CardHeader className="flex-row items-center justify-between">
-              <CardTitle className="text-base">DE-PARA: OMIE → gerencial</CardTitle>
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant={filterUnmapped ? "default" : "outline"}
-                  onClick={() => setFilterUnmapped((v) => !v)}
-                >
-                  Sem mapeamento
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {mappings.isLoading ? (
-                <Skeleton className="h-64" />
-              ) : (
-                <div className="overflow-auto max-h-[600px]">
-                  <table className="w-full text-sm min-w-[640px]">
-                    <thead className="sticky top-0 bg-card">
-                      <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
-                        <th className="py-2.5">Código</th>
-                        <th className="py-2.5">Descrição OMIE</th>
-                        <th className="py-2.5">DRE</th>
-                        <th className="py-2.5">DFC</th>
-                        <th className="py-2.5">Tipo</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredMappings.map((d) => (
-                        <tr key={d.id} className="border-b border-border/60">
-                          <td className="py-2 font-mono text-xs">{d.omie_category_code}</td>
-                          <td className="py-2">{d.omie_category_description ?? "—"}</td>
-                          <td className="py-2">
-                            {d.dre_category ? (
-                              <Badge variant="outline" className="border-primary/30 text-primary bg-primary/10">{d.dre_category}</Badge>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">—</span>
-                            )}
-                          </td>
-                          <td className="py-2">
-                            {d.dfc_category ? (
-                              <Badge variant="outline" className="border-success/30 text-success bg-success/10">{d.dfc_category}</Badge>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">—</span>
-                            )}
-                          </td>
-                          <td className="py-2 text-xs text-muted-foreground">{d.flow_type ?? "—"}</td>
-                        </tr>
-                      ))}
-                      {filteredMappings.length === 0 && (
-                        <tr><td colSpan={5} className="py-6 text-center text-sm text-muted-foreground">Nenhuma categoria neste filtro.</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        <TabsContent value="plano" className="mt-4">
+          <PlanoContasTab companyId={cid} />
         </TabsContent>
 
         <TabsContent value="saldos" className="mt-4">

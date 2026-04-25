@@ -915,6 +915,22 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
     logCtx("warn", "pipeline failed", { error: e instanceof Error ? e.message : String(e) });
   }
 
+  // Post-processing: identify transfers, reconcile, link projects, recompute balance.
+  // These used to be manual buttons — now they always run after sync so the user
+  // doesn't need to click anything.
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    await Promise.allSettled([
+      supabaseAdmin.rpc("pair_bank_transfers", { _company: opts.companyId }),
+      supabaseAdmin.rpc("reconcile_bank_movements", { _company: opts.companyId }),
+      supabaseAdmin.rpc("link_financial_entries_to_projects", { _company: opts.companyId }),
+      supabaseAdmin.rpc("compute_balance_projection", { _company: opts.companyId, _date: today }),
+    ]);
+    logCtx("info", "post-sync processing done", {});
+  } catch (e) {
+    logCtx("warn", "post-sync processing failed", { error: e instanceof Error ? e.message : String(e) });
+  }
+
   // Update sync_preferences last_*
   const stamp = new Date().toISOString();
   const patch = opts.mode === "full"
