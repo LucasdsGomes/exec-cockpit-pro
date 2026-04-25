@@ -1,101 +1,100 @@
 
-# Integração Omie — Pedidos de Venda e Ordens de Compra
+# Simplificação Omie + Previsto x Realizado + DE-PARA enxuto
 
-## Objetivo
+Quatro frentes, todas no Admin. Objetivo: menos botões, fluxos mais óbvios, e adicionar comparação Previsto x Realizado baseada na sua modelagem Excel (Yalla Green = NewCo).
 
-Trazer do Omie os **pedidos de venda** (entradas previstas) e **ordens de compra** (saídas previstas) que ainda não viraram Conta a Receber/Pagar, para enriquecer a **Projeção de Caixa** com compromissos comerciais antecipados.
+---
 
-## Por que isso importa
+## 1. Sincronização Omie — reduzir para 3 ações
 
-Hoje a projeção só enxerga compromissos depois que viram título financeiro (CR/CP). Pedidos aprovados e ordens de compra emitidas geralmente acontecem **15–60 dias antes** disso. Trazê-los aumenta o horizonte e a confiança da projeção.
+Hoje há ~12 botões de sync espalhados (Diagnóstico + barra superior + InitialBalances). Vamos consolidar em **três ações apenas**:
 
-## Escopo
+**a) Sincronizar tudo (full reload)** — botão primário grande, no topo do Admin.
+- Puxa todos os endpoints desde a primeira data do Omie (lookback 10 anos), na ordem de prioridade existente. Usa o `useFullSync` que já existe.
+- Mostra progresso por endpoint num painel inline (não só toast).
 
-### 1. Novos endpoints no catálogo Omie
-Adicionar em `src/integrations/omie/endpoints.ts`:
-- `pedidos_venda` → `produtos/pedido` / `ListarPedidos`
-- `ordens_compra` → `produtos/ordemcompra` / `ListarOrdemCompra`
+**b) Sincronizar agora (incremental)** — botão secundário no topo.
+- Roda o cron diário sob demanda (últimos 7 dias de tudo). Substitui o botão "Sincronizar OMIE" atual e o "Reprocessar".
 
-### 2. Nova tabela: `commercial_commitments`
-Tabela única para os dois tipos (pedidos e ordens), análoga a `financial_entries` mas dedicada ao "ainda-não-financeiro":
+**c) Sincronizar apenas uma conta bancária** — dentro de InitialBalances/Extratos, por linha. Mantém o botão "Resync" por conta (já existe).
 
-```text
-commercial_commitments
-├─ id, company_id
-├─ source_system='omie', source_endpoint, source_record_id (único)
-├─ kind: 'pedido_venda' | 'ordem_compra'
-├─ direction: 'entrada' | 'saida'
-├─ status: 'aberto' | 'parcial' | 'faturado' | 'cancelado'
-├─ issue_date (emissão)
-├─ expected_date (previsão de entrega/faturamento)
-├─ amount, amount_signed
-├─ party_id (customer_id ou supplier_id), party_name
-├─ document_number (número do pedido/OC)
-├─ description
-├─ linked_financial_entry_id (quando vira CR/CP)
-├─ confidence_pct (default 80% pedido, 90% OC — ajustável)
-├─ metadata jsonb (raw)
-├─ synced_at, created_at, updated_at
-```
+**Removidos da UI** (continuam funcionando via cron, só somem dos botões):
+- Espelhar Contas a Pagar/Receber → roda dentro do incremental
+- Reprocessar vínculos OMIE → roda no fim do full
+- Sincronizar extratos / lanc CC / projetos / loans / fiscal / pedidos individualmente → tudo via Full ou Incremental
+- Identificar transferências internas / Conciliar / Vincular projetos / Recalcular balanço → executados automaticamente como **pós-processamento** ao final de cada sync.
 
-RLS padrão: `select_member` + `modify_editor` (mesmo padrão das outras tabelas).
+A aba Diagnóstico vira só **leitura**: status por endpoint, último sync, contagem de registros, alertas. Sem botões de ação.
 
-### 3. Mappers e upserts em `sync.server.ts`
-- `mapPedidoVenda(r, companyId, batchId)` → lê `cabecalho` (codigo_pedido, data_previsao, etapa, total_pedido) e `informacoes_adicionais`.
-- `mapOrdemCompra(r, companyId, batchId)` → lê `cabecalho_oc` e `total_oc`.
-- `upsertCommercialCommitment(...)` com resolução de FK (customer/supplier por `source_record_id`).
-- Filtro por etapa: ignorar canceladas (`etapa='99'` no Omie) e marcar como `faturado` quando o pedido tem `codigo_lancamento_omie` populado (já virou CR).
+## 2. DE-PARA simplificado
 
-### 4. Integração na pipeline
-- Adicionar `pedidos_venda` e `ordens_compra` ao `OMIE_PRIORITY_ORDER` **depois** de `clientes`/`fornecedores` e **antes** de `contas_pagar`/`contas_receber`.
-- Incluir cases no `switch` de `runOmieSync` com filtro de período (`filtrar_por_data_de`/`ate` no formato BR).
-- Defaults da janela: mesmo `lookbackDays` da sync atual.
+Hoje a aba DE-PARA mostra uma tabela longa de categorias Omie com chips DRE/DFC, mas a edição em si não acontece nela (é só leitura). Mudanças:
 
-### 5. Atualizar projeção de caixa
-A função `compute_balance_projection` (e `dfc_forecast_base`) hoje só considera `financial_entries` previstos. Vamos:
-- Criar uma **view** `cash_forecast_extended` que une:
-  - `financial_entries` previstos (peso 100%)
-  - `commercial_commitments` abertos não vinculados a CR/CP (peso = `confidence_pct`)
-- Atualizar o cálculo da projeção para usar essa view.
-- Evitar dupla contagem: quando `linked_financial_entry_id` está preenchido, o commitment é ignorado.
+- **Renomear aba para "Plano de Contas"** (mais claro que "DE-PARA").
+- Adicionar **filtro único**: dropdown `Status: [Todos | Mapeado | Sem mapeamento DRE | Sem mapeamento DFC]`. Remove o toggle atual.
+- Adicionar **edição inline**: clicar no chip DRE/DFC abre um Select com as opções da modelagem Yalla Green (carregadas da planilha). Salva direto no `category_mapping`.
+- Adicionar **busca por código/descrição** no topo.
+- Adicionar **contador no topo**: "X de Y categorias mapeadas (Z%)".
+- Mover `flow_type` para tooltip — não é informação primária.
 
-### 6. UI — Aba Diagnóstico e KPIs
-- Em **Admin → Diagnóstico**, adicionar os dois novos endpoints na lista de sync (com botões "Sincronizar agora" individuais).
-- Em **Fluxo de Caixa / Projeção**, adicionar um toggle **"Incluir pedidos e OCs"** (default ligado) e uma legenda mostrando quanto da projeção vem de commitments vs. CR/CP.
-- Drill-down: ao clicar num dia da projeção, listar separadamente "Títulos financeiros" e "Compromissos comerciais".
+Aba **Centro de Custo** e **Sem CC** continuam como estão (já são objetivas).
+
+## 3. Previsto x Realizado (novo)
+
+Baseado na sua modelagem Excel (Yalla Green = NewCo). Como primeiro passo da implementação eu vou **ler a planilha em build mode** com pandas para extrair:
+- a estrutura de contas gerenciais (linhas do DRE/DFC modelo),
+- o DE-PARA Omie → Yalla Green (que linhas Omie alimentam cada conta gerencial),
+- os valores **Previstos** mensais.
+
+A partir disso:
+
+**a) Carga inicial automatizada:**
+- Edge function `import-yalla-modelo` que lê uma versão do Excel salva no Storage (ou via upload na UI), e popula:
+  - `category_mapping` com o DE-PARA da planilha (sobrescreve o atual da Yalla Green, com confirmação).
+  - `budget_entries` com os valores Previstos mensais (cenário `orcado`), por `managerial_account` e `reference_period`.
+
+**b) Nova aba "Previsto x Realizado":**
+- Tabela mensal com colunas: `Conta gerencial | Previsto | Realizado | Δ | Δ%`.
+- Realizado = soma do `dre_base` agrupado por `managerial_account` e mês (já temos).
+- Previsto = `budget_entries` cenário `orcado`.
+- Período no topo (mês corrente, último trimestre, YTD).
+- Drilldown por linha: clicar abre as transações Omie que somaram o realizado (reusa `DreLineDrilldown`).
+- Linha destacada em vermelho quando |Δ%| > 10% (configurável em Parâmetros).
+
+**c) Botão "Re-importar modelo Yalla Green"** dentro desta aba — re-executa a carga sem duplicar (upsert por `reference_period + managerial_account`).
+
+## 4. Saldos iniciais — simplificar
+
+A integração de **saldos bancários do Omie** já está funcionando (view `omieBalances` na UI). Quando há saldo do Omie, ele já é a fonte de verdade.
+
+Mudanças:
+- Se houver pelo menos 1 saldo do Omie, **esconder** o card "Saldo de abertura por conta bancária" (wizard manual) e o formulário "Adicionar saldo inicial" — eles viram um expansor `> Modo manual (avançado)` colapsado.
+- Quando **não** houver saldo do Omie, mostrar um aviso amarelo: "Sem saldo do Omie — usando entrada manual. Rode Sincronizar tudo para puxar do Omie."
+- Manter saldos manuais para tipos **não bancários** (estoque, imobilizado, empréstimos não-Omie, capital) — esses o Omie não fornece, então continuam necessários e ganham um card próprio "Outros ativos e passivos".
+- Card de extratos por conta (status + import OFX/CSV) continua igual.
+
+Resultado: na tela já integrada, o usuário vê só "Saldos do Omie" + "Extratos" + um expansor avançado.
+
+---
 
 ## Detalhes técnicos
 
-**Endpoints Omie usados:**
-- `POST /produtos/pedido/` call=`ListarPedidos`, paginação padrão (`pagina`, `registros_por_pagina`).
-- `POST /produtos/ordemcompra/` call=`ListarOrdemCompra`, paginação padrão.
+**Banco de dados:**
+- Nenhuma tabela nova obrigatória — `budget_entries` já comporta o cenário `orcado`. Possível adicionar coluna `dre_group` em `budget_entries` para agrupar visualmente na tela.
+- Possível view `vw_budget_vs_actual_monthly` (managerial_account, reference_period, budget, actual, variance) para a query da nova aba ser simples.
 
-**Conversão de status Omie → nosso enum** (mapa em `mapPedidoVenda`):
-- etapa `10/20/50/60` → `aberto`
-- etapa `70` (faturado parcial) → `parcial`
-- etapa `80` (faturado) → `faturado`
-- etapa `90/99` → `cancelado`
+**Edge functions / server:**
+- `import-yalla-modelo`: server function em `src/routes/api/admin/import-yalla-modelo.ts` que recebe o arquivo, parseia com `xlsx` (já é Worker-compatível), valida abas esperadas, faz upsert em `category_mapping` + `budget_entries`. Pré-requisito: `bun add xlsx`.
+- Pós-processamento automático no `runOmieSync`: ao final, encadear `pairBankTransfers → reconcileBankMovements → linkEntriesToProjects → backfillBalance(30)` num único `Promise.allSettled` para que o usuário não precise clicar nada.
 
-**Migração SQL:**
-1. CREATE TABLE `commercial_commitments` + índices em `(company_id, expected_date)`, `(company_id, kind, status)`, único em `(company_id, source_endpoint, source_record_id)`.
-2. RLS policies.
-3. CREATE OR REPLACE VIEW `cash_forecast_extended`.
-4. CREATE OR REPLACE FUNCTION `compute_balance_projection` para usar a view.
+**UI:**
+- `DiagnosticoTab` vira só leitura (remover botões de ação, manter painéis de status).
+- Novo header global no Admin com 3 botões: Sync tudo / Sync agora / Última sync.
+- Nova aba `Previsto x Realizado` no `_app.admin.tsx` (ou rota dedicada `/_app/previsto-realizado` se preferir).
+- Renomear `DE-PARA` → `Plano de Contas`, adicionar edição inline (Popover com Select).
+- `InitialBalancesTab` reorganizado conforme descrito.
 
-**Arquivos a editar:**
-- `src/integrations/omie/endpoints.ts` (catálogo)
-- `src/integrations/omie/sync.server.ts` (mappers + runners + switch)
-- `src/components/admin/DiagnosticoTab.tsx` (UI sync)
-- `src/lib/queries/dfc.ts` + `src/routes/_app.fluxo-de-caixa.tsx` (toggle e drill-down)
-- Nova migração SQL
+**Hooks a remover do JSX (mantidos no código se ainda usados pelo cron):**
+`useMirrorApAr`, `useBackfillRefs`, `useSyncBankStatements` (do botão global; mantém o por-conta), `useSyncLancamentosCC`, `useSyncProjectsAndTags`, `useLinkEntriesToProjects`, `useSyncLoans`, `useSyncCommercialCommitments`, `useSyncFiscalDocuments`, `useReconcileBankMovements`, `usePairBankTransfers`, `useBackfillBalance`.
 
-## Fora de escopo
-
-- Itens do pedido (linha-a-linha de produtos) — só capturamos o cabeçalho/total.
-- Notas Fiscais Emitidas (NF-e) — fica para a próxima fase ("fechamento contábil").
-- Edição manual de commitments na UI (somente leitura nesta versão).
-- Conciliação automática entre pedido → CR (faremos por `linked_financial_entry_id` quando o Omie já populou; reconciliação fuzzy fica para depois).
-
-## Próximo passo após aprovação
-
-Executo na ordem: migração SQL → endpoints/sync → DiagnósticoTab → projeção/UI. Depois você roda um sync manual em Admin → Diagnóstico para popular.
+**Primeiro passo na implementação:** parsear o Excel `Hitech-e_-_Modelagem_v5_NewCo_Vendas_VF.xlsx` para mapear (a) abas, (b) estrutura de contas Yalla Green, (c) coluna do DE-PARA Omie, (d) layout do Previsto mensal. Posso então te confirmar antes de gerar a edge function de import.
