@@ -165,10 +165,13 @@ export function InitialBalancesTab({ companyId }: { companyId: string | null | u
           {omieBalances.isLoading ? (
             <Skeleton className="h-24" />
           ) : (omieBalances.data ?? []).length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Nenhum saldo sincronizado ainda. Rode um sync na aba Diagnóstico para puxar os saldos atuais do Omie.
-              Enquanto isso, o cálculo de caixa usa os saldos manuais abaixo.
-            </p>
+            <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning flex items-start gap-2">
+              <AlertTriangle className="size-4 mt-0.5 shrink-0" />
+              <div>
+                <strong>Sem saldo do Omie.</strong> Clique em <strong>Sincronizar tudo</strong> no topo da página para puxar os saldos atuais.
+                Enquanto isso, o caixa usa os saldos manuais do modo avançado abaixo.
+              </div>
+            </div>
           ) : (
             <>
               <table className="w-full text-sm">
