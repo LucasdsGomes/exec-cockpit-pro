@@ -7,7 +7,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Trash2, Plus, Wallet, Sparkles, RefreshCw, Upload, FileText, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
+import { Trash2, Plus, Wallet, Sparkles, RefreshCw, Upload, FileText, AlertTriangle, CheckCircle2, Loader2, ChevronDown, Package } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
 import { BRL } from "@/lib/format";
 import {
@@ -33,6 +34,8 @@ const TYPES = [
   { value: "outros_passivos", label: "Outros passivos" },
   { value: "capital", label: "Capital social" },
 ];
+
+const NON_BANK_TYPES = TYPES.filter((t) => t.value !== "caixa");
 
 export function InitialBalancesTab({ companyId }: { companyId: string | null | undefined }) {
   const list = useInitialBalances(companyId);
