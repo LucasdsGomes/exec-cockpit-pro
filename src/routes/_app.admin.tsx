@@ -4,36 +4,44 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { CheckCircle2, RefreshCw, Plug, AlertTriangle, FileWarning, Loader2, DownloadCloud } from "lucide-react";
-import { useMemo } from "react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  CheckCircle2,
+  RefreshCw,
+  Plug,
+  AlertTriangle,
+  Loader2,
+  DownloadCloud,
+  ChevronDown,
+  Settings2,
+} from "lucide-react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { BRL } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCompany } from "@/lib/queries/company";
 import {
   useSyncBatches,
   useSyncLogs,
-  useCategoryMappings,
-  useUnclassifiedEntries,
   useTriggerSync,
-  useReclassify,
   useFullSync,
 } from "@/lib/queries/admin";
-import { InitialBalancesTab } from "@/components/admin/InitialBalancesTab";
 import { ManualEntriesTab } from "@/components/admin/ManualEntriesTab";
 import { ParametersTab } from "@/components/admin/ParametersTab";
-import { BudgetTab } from "@/components/admin/BudgetTab";
-import { DiagnosticoTab } from "@/components/admin/DiagnosticoTab";
 import { CostCenterRulesTab } from "@/components/admin/CostCenterRulesTab";
-import { UnassignedEntriesTab } from "@/components/admin/UnassignedEntriesTab";
-import { PrevistoRealizadoTab } from "@/components/admin/PrevistoRealizadoTab";
 import { PlanoContasTab } from "@/components/admin/PlanoContasTab";
+import { SaldosOrcamentoTab } from "@/components/admin/SaldosOrcamentoTab";
+import { SaudeDosDadosCard } from "@/components/admin/SaudeDosDadosCard";
+import { DiagnosticoTab } from "@/components/admin/DiagnosticoTab";
 
 export const Route = createFileRoute("/_app/admin")({
   head: () => ({
     meta: [
       { title: "Admin" },
-      { name: "description", content: "Status de integrações, DE-PARA, orçamento, ajustes manuais e fila de classificação." },
+      { name: "description", content: "Sincronização Omie, plano de contas, saldos e ajustes." },
     ],
   }),
   component: AdminPage,
@@ -51,11 +59,11 @@ function AdminPage() {
 
   const batches = useSyncBatches(cid);
   const logs = useSyncLogs(cid);
-  const mappings = useCategoryMappings(cid);
-  const unclassified = useUnclassifiedEntries(cid);
   const triggerSync = useTriggerSync(cid);
-  const reclassify = useReclassify(cid);
   const fullSync = useFullSync(cid);
+
+  const [activeTab, setActiveTab] = useState("sync");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const handleSync = () => {
     toast.promise(triggerSync.mutateAsync(), {
@@ -73,14 +81,6 @@ function AdminPage() {
         const t = r.totals;
         return `Sync completa · ${t?.inserted ?? 0} novos, ${t?.updated ?? 0} atualizados`;
       },
-      error: (e) => `Erro: ${e.message}`,
-    });
-  };
-
-  const handleReclassify = () => {
-    toast.promise(reclassify.mutateAsync(), {
-      loading: "Reprocessando classificações e KPIs...",
-      success: "Pipeline executado",
       error: (e) => `Erro: ${e.message}`,
     });
   };
@@ -115,22 +115,17 @@ function AdminPage() {
         </div>
       </header>
 
-      <Tabs defaultValue="integracoes">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="bg-card border border-border w-full justify-start overflow-x-auto tabs-scroll h-auto flex-nowrap">
-          <TabsTrigger value="integracoes">Integrações</TabsTrigger>
-          <TabsTrigger value="plano">Plano de Contas ({mappings.data?.length ?? 0})</TabsTrigger>
-          <TabsTrigger value="saldos">Saldos iniciais</TabsTrigger>
-          <TabsTrigger value="ccrules">Centro de Custo</TabsTrigger>
-          <TabsTrigger value="semcc">Sem CC</TabsTrigger>
-          <TabsTrigger value="orcamento">Orçamento</TabsTrigger>
-          <TabsTrigger value="previsto">Previsto x Realizado</TabsTrigger>
-          <TabsTrigger value="ajustes">Ajustes</TabsTrigger>
-          <TabsTrigger value="parametros">Parâmetros</TabsTrigger>
-          <TabsTrigger value="fila">Fila ({unclassified.data?.length ?? 0})</TabsTrigger>
-          <TabsTrigger value="diagnostico">Diagnóstico</TabsTrigger>
+          <TabsTrigger value="sync">Sincronização</TabsTrigger>
+          <TabsTrigger value="plano">Plano de Contas</TabsTrigger>
+          <TabsTrigger value="saldos">Saldos & Orçamento</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="integracoes" className="mt-4 space-y-4">
+        {/* === 1. SINCRONIZAÇÃO === */}
+        <TabsContent value="sync" className="mt-4 space-y-4">
+          <SaudeDosDadosCard companyId={cid} onGoToPlano={() => setActiveTab("plano")} />
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card className="bg-card border-border">
               <CardHeader className="flex-row items-center justify-between">
@@ -157,7 +152,7 @@ function AdminPage() {
                 ) : lastByEndpoint.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Nenhum batch executado ainda.</p>
                 ) : (
-                  <div className="divide-y divide-border">
+                  <div className="divide-y divide-border max-h-72 overflow-auto">
                     {lastByEndpoint.map(([endpoint, b]) => (
                       <div key={endpoint} className="flex items-center justify-between py-2.5">
                         <div className="flex items-center gap-2 text-sm">
@@ -203,89 +198,55 @@ function AdminPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* === AVANÇADO === colapsado por padrão */}
+          <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+            <Card className="bg-card border-border">
+              <CollapsibleTrigger className="w-full">
+                <CardHeader className="flex-row items-center justify-between cursor-pointer hover:bg-muted/30 transition-colors">
+                  <CardTitle className="text-base flex items-center gap-2 text-muted-foreground">
+                    <Settings2 className="size-4" /> Avançado
+                    <span className="text-xs font-normal">(diagnóstico, regras, ajustes manuais, parâmetros)</span>
+                  </CardTitle>
+                  <ChevronDown className={`size-4 text-muted-foreground transition-transform ${advancedOpen ? "rotate-180" : ""}`} />
+                </CardHeader>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent>
+                  <Tabs defaultValue="diagnostico" className="space-y-4">
+                    <TabsList className="bg-background border border-border">
+                      <TabsTrigger value="diagnostico">Diagnóstico</TabsTrigger>
+                      <TabsTrigger value="ccrules">Regras de CC</TabsTrigger>
+                      <TabsTrigger value="ajustes">Ajustes manuais</TabsTrigger>
+                      <TabsTrigger value="parametros">Parâmetros</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="diagnostico">
+                      <DiagnosticoTab companyId={cid} />
+                    </TabsContent>
+                    <TabsContent value="ccrules">
+                      <CostCenterRulesTab companyId={cid} />
+                    </TabsContent>
+                    <TabsContent value="ajustes">
+                      <ManualEntriesTab companyId={cid} />
+                    </TabsContent>
+                    <TabsContent value="parametros">
+                      <ParametersTab companyId={cid} />
+                    </TabsContent>
+                  </Tabs>
+                </CardContent>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
         </TabsContent>
 
+        {/* === 2. PLANO DE CONTAS === */}
         <TabsContent value="plano" className="mt-4">
           <PlanoContasTab companyId={cid} />
         </TabsContent>
 
+        {/* === 3. SALDOS & ORÇAMENTO === */}
         <TabsContent value="saldos" className="mt-4">
-          <InitialBalancesTab companyId={cid} />
-        </TabsContent>
-
-        <TabsContent value="ccrules" className="mt-4">
-          <CostCenterRulesTab companyId={cid} />
-        </TabsContent>
-
-        <TabsContent value="semcc" className="mt-4">
-          <UnassignedEntriesTab companyId={cid} />
-        </TabsContent>
-
-        <TabsContent value="orcamento" className="mt-4">
-          <BudgetTab companyId={cid} />
-        </TabsContent>
-
-        <TabsContent value="previsto" className="mt-4">
-          <PrevistoRealizadoTab companyId={cid} />
-        </TabsContent>
-
-        <TabsContent value="ajustes" className="mt-4">
-          <ManualEntriesTab companyId={cid} />
-        </TabsContent>
-
-        <TabsContent value="parametros" className="mt-4">
-          <ParametersTab companyId={cid} />
-        </TabsContent>
-
-        <TabsContent value="fila" className="mt-4">
-          <Card className="bg-card border-border">
-            <CardHeader className="flex-row items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <FileWarning className="size-4 text-warning" /> Pendentes de classificação
-              </CardTitle>
-              <Button size="sm" variant="outline" onClick={handleReclassify} disabled={reclassify.isPending}>
-                Reprocessar todos
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {unclassified.isLoading ? (
-                <Skeleton className="h-32" />
-              ) : (unclassified.data ?? []).length === 0 ? (
-                <p className="text-sm text-muted-foreground">Sem lançamentos pendentes 🎉</p>
-              ) : (
-                <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[600px]">
-                  <thead>
-                    <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border">
-                      <th className="py-2.5">Data</th>
-                      <th className="py-2.5">Histórico</th>
-                      <th className="py-2.5">Categoria OMIE</th>
-                      <th className="py-2.5 text-right">Valor</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(unclassified.data ?? []).map((f) => (
-                      <tr key={f.id} className="border-b border-border/60">
-                        <td className="py-2 text-xs">{f.competence_date}</td>
-                        <td className="py-2 max-w-md truncate">
-                          {f.description ?? f.supplier_name ?? f.customer_name ?? "—"}
-                        </td>
-                        <td className="py-2 text-xs font-mono text-muted-foreground">{f.category_raw ?? "—"}</td>
-                        <td className={`py-2 text-right tabular-nums ${f.amount_signed < 0 ? "text-destructive" : "text-success"}`}>
-                          {BRL(f.amount_signed)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="diagnostico" className="mt-4">
-          <DiagnosticoTab companyId={cid} />
+          <SaldosOrcamentoTab companyId={cid} />
         </TabsContent>
       </Tabs>
     </div>
