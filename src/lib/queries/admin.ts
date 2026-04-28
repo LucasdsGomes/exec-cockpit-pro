@@ -1373,3 +1373,87 @@ export function useBudgetVsActual(
     },
   });
 }
+
+// ---------- Bulk DE-PARA import (XLSX/CSV) ----------
+
+export interface CategoryMapImportRow {
+  omie_category_code: string;
+  omie_category_description?: string | null;
+  dre_category?: string | null;
+  dfc_category?: string | null;
+  flow_type?: string | null;
+}
+
+export function useBulkUpsertCategoryMappings(companyId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (rows: CategoryMapImportRow[]) => {
+      if (!companyId) throw new Error("Empresa não selecionada");
+      if (!rows.length) throw new Error("Nenhuma linha válida na planilha");
+
+      let created = 0;
+      let updated = 0;
+      let skipped = 0;
+
+      const { data: existing } = await supabase
+        .from("category_mapping")
+        .select("id, omie_category_code, dre_category, dfc_category, flow_type")
+        .eq("company_id", companyId);
+
+      const byCode = new Map(
+        (existing ?? []).map((r) => [String(r.omie_category_code).trim(), r]),
+      );
+
+      const inserts: Array<Record<string, unknown>> = [];
+
+      for (const r of rows) {
+        const code = String(r.omie_category_code ?? "").trim();
+        if (!code) {
+          skipped += 1;
+          continue;
+        }
+        const flowType = (r.flow_type ?? "").toString().trim().toLowerCase();
+        const validFlow = ["operacional", "investimento", "financiamento"].includes(flowType)
+          ? flowType
+          : null;
+
+        const found = byCode.get(code);
+        if (found) {
+          const patch: Record<string, unknown> = {};
+          if (r.dre_category !== undefined) patch.dre_category = r.dre_category || null;
+          if (r.dfc_category !== undefined) patch.dfc_category = r.dfc_category || null;
+          if (r.omie_category_description) patch.omie_category_description = r.omie_category_description;
+          if (validFlow) patch.flow_type = validFlow;
+          if (Object.keys(patch).length === 0) {
+            skipped += 1;
+            continue;
+          }
+          const { error } = await supabase.from("category_mapping").update(patch).eq("id", found.id);
+          if (error) throw error;
+          updated += 1;
+        } else {
+          inserts.push({
+            company_id: companyId,
+            omie_category_code: code,
+            omie_category_description: r.omie_category_description ?? null,
+            dre_category: r.dre_category || null,
+            dfc_category: r.dfc_category || null,
+            flow_type: validFlow,
+            active: true,
+          });
+        }
+      }
+
+      if (inserts.length > 0) {
+        const { error } = await supabase.from("category_mapping").insert(inserts);
+        if (error) throw error;
+        created = inserts.length;
+      }
+
+      return { created, updated, skipped, total: rows.length };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["categoryMappings", companyId] });
+    },
+  });
+}
