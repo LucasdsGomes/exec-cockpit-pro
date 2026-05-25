@@ -913,7 +913,8 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
         });
         break;
       case "pedidos_venda":
-        r = await runSliced(key, (item, batchId) => upsertCommitment(mapPedidoVenda(item, opts.companyId, batchId)));
+        // produtos/pedido (pvpListarRequest) não aceita filtro por emissão — pagina sem filtro de data
+        r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: { pagina: 1, registros_por_pagina: 200 }, upsert: (item, batchId) => upsertCommitment(mapPedidoVenda(item, opts.companyId, batchId)) });
         break;
       case "ordens_compra":
         r = await runSliced(key, (item, batchId) => upsertCommitment(mapOrdemCompra(item, opts.companyId, batchId)));
