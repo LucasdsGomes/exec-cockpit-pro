@@ -67,31 +67,51 @@ export function useKpis(
       const range = periodToRange(period);
       const prev = previousRange(range);
 
-      const today = new Date();
-      const in7 = new Date(today.getTime() + 7 * 86_400_000).toISOString().slice(0, 10);
-      const todayStr = today.toISOString().slice(0, 10);
-
+      // Window for "A Pagar / A Receber" and for PMR/PMP follows the active period filter.
       const payQ = supabase
         .from("payable_entries")
-        .select("amount, paid_amount")
+        .select("amount, paid_amount, due_date, cash_date")
         .eq("company_id", companyId!)
-        .gte("due_date", todayStr)
-        .lte("due_date", in7);
+        .gte("due_date", range.start)
+        .lte("due_date", range.end);
       const recQ = supabase
         .from("receivable_entries")
-        .select("amount, received_amount")
+        .select("amount, received_amount, due_date, cash_date")
         .eq("company_id", companyId!)
-        .gte("due_date", todayStr)
-        .lte("due_date", in7);
+        .gte("due_date", range.start)
+        .lte("due_date", range.end);
       if (cc) {
         payQ.eq("cost_center_id", cc);
         recQ.eq("cost_center_id", cc);
+      }
+
+      // Settled entries within range for PMR/PMP (days from competence to cash).
+      let pmrQ = supabase
+        .from("financial_entries")
+        .select("competence_date, cash_date")
+        .eq("company_id", companyId!)
+        .eq("direction", "entrada")
+        .not("cash_date", "is", null)
+        .gte("cash_date", range.start)
+        .lte("cash_date", range.end);
+      let pmpQ = supabase
+        .from("financial_entries")
+        .select("competence_date, cash_date")
+        .eq("company_id", companyId!)
+        .eq("direction", "saida")
+        .not("cash_date", "is", null)
+        .gte("cash_date", range.start)
+        .lte("cash_date", range.end);
+      if (cc) {
+        pmrQ = pmrQ.eq("cost_center_id", cc);
+        pmpQ = pmpQ.eq("cost_center_id", cc);
       }
 
       const [
         currTotals, prevTotals,
         payables, receivables,
         accountsRes, snapshotRes,
+        pmrRes, pmpRes,
       ] = await Promise.all([
         aggregateDre(companyId!, range, { costCenterId: cc, businessUnit: bu }),
         aggregateDre(companyId!, prev, { costCenterId: cc, businessUnit: bu }),
@@ -111,6 +131,8 @@ export function useKpis(
           .order("snapshot_date", { ascending: false })
           .limit(1)
           .maybeSingle(),
+        pmrQ,
+        pmpQ,
       ]);
 
       const curr = computeDreSubtotals(currTotals);
@@ -131,6 +153,24 @@ export function useKpis(
         0,
       );
 
+      const avgDays = (rows: Array<{ competence_date: string | null; cash_date: string | null }> | null) => {
+        if (!rows || rows.length === 0) return 0;
+        let total = 0;
+        let n = 0;
+        for (const r of rows) {
+          if (!r.competence_date || !r.cash_date) continue;
+          const d = (new Date(r.cash_date).getTime() - new Date(r.competence_date).getTime()) / 86_400_000;
+          if (Number.isFinite(d) && d >= 0) {
+            total += d;
+            n += 1;
+          }
+        }
+        return n > 0 ? total / n : 0;
+      };
+      const pmr = avgDays(pmrRes.data as Array<{ competence_date: string | null; cash_date: string | null }> | null);
+      const pmp = avgDays(pmpRes.data as Array<{ competence_date: string | null; cash_date: string | null }> | null);
+      const cicloFinanceiro = pmr - pmp;
+
       const snap = snapshotRes.data as Record<string, number | null> | null;
       const saldoCaixa = Number(snap?.caixa_final ?? 0);
       const projecaoCaixa30d = Number(snap?.projecao_caixa_30d ?? 0) || (saldoCaixa + contasReceber7d - contasPagar7d);
@@ -149,9 +189,9 @@ export function useKpis(
         projecaoCaixa30d,
         contasPagar7d,
         contasReceber7d,
-        pmr: Number(snap?.pmr ?? 0),
-        pmp: Number(snap?.pmp ?? 0),
-        cicloFinanceiro: Number(snap?.ciclo_financeiro ?? 0),
+        pmr,
+        pmp,
+        cicloFinanceiro,
         contasBancarias: (accountsRes.data ?? []).length,
         range,
       };
