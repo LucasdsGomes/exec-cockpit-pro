@@ -20,21 +20,24 @@ export const Route = createFileRoute("/api/public/hooks/omie-sync-now")({
         }
         const today = new Date();
         const start = new Date(today.getTime() - (body.lookbackDays ?? 90) * 86_400_000);
-        try {
-          const r = await runOmieSync({
-            companyId: body.companyId,
-            startDate: start.toISOString().slice(0, 10),
-            endDate: today.toISOString().slice(0, 10),
-            triggeredBy: null,
-            mode: body.mode ?? "full",
-            endpoints: body.endpoints,
-            bankAccountId: body.bankAccountId ?? null,
-          });
-          return new Response(JSON.stringify(r), { status: 200, headers: { "Content-Type": "application/json" } });
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          return new Response(JSON.stringify({ ok: false, error: msg }), { status: 500, headers: { "Content-Type": "application/json" } });
-        }
+        // Fire-and-forget: o sync demora minutos e estoura o timeout do gateway (504).
+        // Disparamos em background e respondemos 202 imediatamente — a UI acompanha
+        // o progresso via omie_raw_sync_batches / omie_sync_logs.
+        void runOmieSync({
+          companyId: body.companyId,
+          startDate: start.toISOString().slice(0, 10),
+          endDate: today.toISOString().slice(0, 10),
+          triggeredBy: null,
+          mode: body.mode ?? "full",
+          endpoints: body.endpoints,
+          bankAccountId: body.bankAccountId ?? null,
+        }).catch((e) => {
+          console.error("[omie-sync-now] background sync failed:", e);
+        });
+        return new Response(
+          JSON.stringify({ ok: true, accepted: true, message: "Sincronização iniciada em background" }),
+          { status: 202, headers: { "Content-Type": "application/json" } },
+        );
       },
     },
   },
