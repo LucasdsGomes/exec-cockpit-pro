@@ -1416,8 +1416,10 @@ export function useBulkUpsertCategoryMappings(companyId: string | null | undefin
           continue;
         }
         const flowType = (r.flow_type ?? "").toString().trim().toLowerCase();
-        const validFlow = ["operacional", "investimento", "financiamento"].includes(flowType)
-          ? flowType
+        const validFlow = (["operacional", "investimento", "financiamento"] as const).includes(
+          flowType as "operacional" | "investimento" | "financiamento",
+        )
+          ? (flowType as "operacional" | "investimento" | "financiamento")
           : null;
 
         const found = byCode.get(code);
