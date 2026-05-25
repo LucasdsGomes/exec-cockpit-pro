@@ -613,8 +613,24 @@ async function runListEndpoint(opts: {
       maxPages: 50,
     })) {
       if (!page.ok) {
-        errors += 1;
-        await recordError(opts.companyId, batchId, def.endpoint, page.error, opts.param);
+        const msg = (page.error ?? "").toLowerCase();
+        const isUnavailable =
+          msg.includes("404") ||
+          msg.includes("not found") ||
+          msg.includes("não faz parte") ||
+          msg.includes("nao faz parte") ||
+          msg.includes("método") && msg.includes("não") ||
+          msg.includes("modulo") || msg.includes("módulo");
+        if (isUnavailable && page.page === 1 && total === 0) {
+          // Endpoint indisponível para esta conta OMIE (módulo não contratado
+          // ou call inexistente). Não é erro: registra aviso e segue.
+          await logToDb(opts.companyId, batchId, "warn",
+            `Endpoint ${def.label} indisponível: ${page.error}`,
+            def.endpoint, { skipped: true });
+        } else {
+          errors += 1;
+          await recordError(opts.companyId, batchId, def.endpoint, page.error, opts.param);
+        }
         break;
       }
       // Persist raw payload page
