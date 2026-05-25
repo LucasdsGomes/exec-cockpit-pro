@@ -89,8 +89,8 @@ export const OMIE_ENDPOINTS: Record<OmieEndpointKey, OmieEndpointDef> = {
   saldos_bancarios: {
     key: "saldos_bancarios",
     label: "Saldos Bancários",
-    endpoint: "financas/saldobancario",
-    call: "ListarPosicaoBancaria",
+    endpoint: "saldo/saldo",
+    call: "ListarSaldo",
     idField: "nCodCC",
   },
   pedidos_venda: {
