@@ -249,7 +249,11 @@ export function useSyncBatches(companyId: string | null | undefined) {
   return useQuery({
     queryKey: ["syncBatches", companyId],
     enabled: !!companyId,
-    refetchInterval: 15_000,
+    refetchInterval: (q) => {
+      const data = q.state.data as SyncBatch[] | undefined;
+      if (data?.some((b) => b.status === "running" || b.status === "pending")) return 3_000;
+      return 15_000;
+    },
     queryFn: async (): Promise<SyncBatch[]> => {
       const { data } = await supabase
         .from("omie_raw_sync_batches")

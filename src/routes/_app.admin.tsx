@@ -19,9 +19,10 @@ import {
   ChevronDown,
   Settings2,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import { useCompany } from "@/lib/queries/company";
 import {
   useSyncBatches,
@@ -53,6 +54,9 @@ function fmtDateTime(s: string | null) {
   return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
+const FULL_SYNC_TOTAL = 17; // OMIE_PRIORITY_ORDER count
+const FULL_SYNC_KEY = (cid: string) => `omie:fullSyncStartedAt:${cid}`;
+
 function AdminPage() {
   const { data: company } = useCompany();
   const cid = company?.id;
@@ -64,6 +68,38 @@ function AdminPage() {
 
   const [activeTab, setActiveTab] = useState("sync");
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [fullSyncStartedAt, setFullSyncStartedAt] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!cid) return;
+    const raw = localStorage.getItem(FULL_SYNC_KEY(cid));
+    setFullSyncStartedAt(raw ? Number(raw) : null);
+  }, [cid]);
+
+  const fullSyncProgress = useMemo(() => {
+    if (!fullSyncStartedAt) return null;
+    const since = (batches.data ?? []).filter(
+      (b) => new Date(b.started_at).getTime() >= fullSyncStartedAt - 5_000,
+    );
+    const done = new Set(
+      since
+        .filter((b) => ["success", "completed", "error", "failed"].includes(b.status))
+        .map((b) => b.source_endpoint),
+    );
+    const running = since.find((b) => b.status === "running" || b.status === "pending");
+    const completed = Math.min(done.size, FULL_SYNC_TOTAL);
+    const pct = Math.min(100, Math.round((completed / FULL_SYNC_TOTAL) * 100));
+    return { completed, total: FULL_SYNC_TOTAL, pct, currentEndpoint: running?.source_endpoint ?? null };
+  }, [fullSyncStartedAt, batches.data]);
+
+  useEffect(() => {
+    if (!cid || !fullSyncProgress || fullSyncProgress.pct < 100) return;
+    const t = setTimeout(() => {
+      localStorage.removeItem(FULL_SYNC_KEY(cid));
+      setFullSyncStartedAt(null);
+    }, 5_000);
+    return () => clearTimeout(t);
+  }, [cid, fullSyncProgress]);
 
   const handleSync = () => {
     toast.promise(triggerSync.mutateAsync(), {
@@ -75,11 +111,19 @@ function AdminPage() {
 
   const handleFullSync = () => {
     if (!confirm("Isso vai recarregar TODOS os endpoints da Omie desde o início (~10 anos). Pode demorar vários minutos. Continuar?")) return;
-    toast.promise(fullSync.mutateAsync(), {
-      loading: "Disparando sincronização completa…",
-      success: "Sync completa iniciada em background — pode levar vários minutos",
-      error: (e) => `Erro: ${e.message}`,
-    });
+    const ts = Date.now();
+    toast.promise(
+      fullSync.mutateAsync().then((r) => {
+        if (cid) localStorage.setItem(FULL_SYNC_KEY(cid), String(ts));
+        setFullSyncStartedAt(ts);
+        return r;
+      }),
+      {
+        loading: "Disparando sincronização completa…",
+        success: "Sync completa iniciada — acompanhe o progresso abaixo",
+        error: (e) => `Erro: ${e.message}`,
+      },
+    );
   };
 
   const lastByEndpoint = useMemo(() => {
@@ -111,6 +155,30 @@ function AdminPage() {
           </Button>
         </div>
       </header>
+
+      {fullSyncProgress && (
+        <Card className="bg-card border-border">
+          <CardContent className="py-4 space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-2 font-medium">
+                <Loader2 className="size-4 text-primary animate-spin" />
+                Sincronização completa em andamento
+              </div>
+              <div className="tabular-nums text-muted-foreground">
+                {fullSyncProgress.completed}/{fullSyncProgress.total} endpoints
+                <span className="ml-3 text-foreground font-semibold">{fullSyncProgress.pct}%</span>
+                <span className="ml-2 text-xs">({100 - fullSyncProgress.pct}% restante)</span>
+              </div>
+            </div>
+            <Progress value={fullSyncProgress.pct} className="h-2" />
+            {fullSyncProgress.currentEndpoint && (
+              <div className="text-xs text-muted-foreground font-mono">
+                Processando: {fullSyncProgress.currentEndpoint}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="bg-card border border-border w-full justify-start overflow-x-auto tabs-scroll h-auto flex-nowrap">
