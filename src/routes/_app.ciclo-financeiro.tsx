@@ -1,10 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Timer, Repeat, Activity } from "lucide-react";
 import { ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ReferenceLine } from "recharts";
 import { BRL } from "@/lib/format";
 import { SectionHeader } from "@/components/ui/section-header";
+import { PeriodPresets } from "@/components/ui/period-presets";
 import { CHART_COLORS, CHART_GRID, CHART_AXIS_TICK, ChartTooltip } from "@/components/ui/chart-primitives";
 import { InsightCard } from "@/components/ui/insight-card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -22,9 +24,10 @@ export const Route = createFileRoute("/_app/ciclo-financeiro")({
 });
 
 function CicloPage() {
+  const [period, setPeriod] = useState("30d");
   const { data: company } = useCompany();
   const cid = company?.id;
-  const { data: m, isLoading } = useCycleMetrics(cid);
+  const { data: m, isLoading } = useCycleMetrics(cid, period);
   const { data: hist } = useCycleHistory(cid);
 
   const pmr = m?.pmr ?? 0;
@@ -40,6 +43,7 @@ function CicloPage() {
         eyebrow="Capital de giro"
         title="Ciclo Financeiro"
         description="Indicadores operacionais (PMR, PMP, PME) e impacto na necessidade de capital de giro."
+        actions={<PeriodPresets value={period} onChange={setPeriod} />}
       />
 
       {isLoading ? (

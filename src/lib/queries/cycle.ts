@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { monthLabelBR } from "@/lib/period";
+import { monthLabelBR, periodToRange } from "@/lib/period";
 
 export interface CycleMetrics {
   pmr: number;
@@ -20,60 +20,98 @@ export interface CycleHistoryPoint {
   ciclo: number;
 }
 
-export function useCycleMetrics(companyId: string | null | undefined) {
+export function useCycleMetrics(
+  companyId: string | null | undefined,
+  period: string = "30d",
+) {
   return useQuery({
-    queryKey: ["cycleMetrics", companyId],
+    queryKey: ["cycleMetrics", companyId, period],
     enabled: !!companyId,
     queryFn: async (): Promise<CycleMetrics> => {
-      const today = new Date().toISOString().slice(0, 10);
-      // Read latest persisted metrics from financial_cycle_metrics (source of truth).
-      const { data: metricsRow } = await supabase
-        .from("financial_cycle_metrics")
-        .select("pmr, pmp, pme, ciclo_operacional, ciclo_financeiro, necessidade_capital_giro")
-        .eq("company_id", companyId!)
-        .order("reference_period", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const range = periodToRange(period);
+      // 1) Cálculo dinâmico: PMR/PMP a partir de financial_entries liquidados no período.
+      const [pmrRes, pmpRes, dreRes, pmeParamRes, snapRes] = await Promise.all([
+        supabase
+          .from("financial_entries")
+          .select("competence_date, cash_date")
+          .eq("company_id", companyId!)
+          .eq("direction", "entrada")
+          .not("cash_date", "is", null)
+          .gte("cash_date", range.start)
+          .lte("cash_date", range.end),
+        supabase
+          .from("financial_entries")
+          .select("competence_date, cash_date")
+          .eq("company_id", companyId!)
+          .eq("direction", "saida")
+          .not("cash_date", "is", null)
+          .gte("cash_date", range.start)
+          .lte("cash_date", range.end),
+        supabase
+          .from("dre_base")
+          .select("amount_signed")
+          .eq("company_id", companyId!)
+          .eq("dre_group", "Receita Líquida")
+          .gte("competence_date", range.start)
+          .lte("competence_date", range.end),
+        supabase
+          .from("manual_parameters")
+          .select("param_value")
+          .eq("company_id", companyId!)
+          .eq("param_key", "pme_days")
+          .maybeSingle(),
+        supabase
+          .from("financial_cycle_metrics")
+          .select("pmr, pmp, pme, ciclo_operacional, ciclo_financeiro, necessidade_capital_giro")
+          .eq("company_id", companyId!)
+          .order("reference_period", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
 
-      let r: Record<string, number | null> = {};
-      if (metricsRow) {
-        r = {
-          pmr: metricsRow.pmr,
-          pmp: metricsRow.pmp,
-          pme: metricsRow.pme,
-          ciclo_operacional: metricsRow.ciclo_operacional,
-          ciclo_financeiro: metricsRow.ciclo_financeiro,
-          ncg: metricsRow.necessidade_capital_giro,
-        };
-      } else {
-        // Fallback: compute on the fly if no snapshot exists.
-        const { data } = await supabase.rpc("compute_financial_cycle", {
-          _company: companyId!,
-          _period: today,
-        });
-        if (data && Array.isArray(data) && data.length > 0) {
-          r = data[0] as Record<string, number | null>;
-        } else {
-          return { pmr: 0, pmp: 0, pme: 0, cicloOperacional: 0, cicloFinanceiro: 0, ncg: 0, receitaLiquidaMes: 0 };
+      const avgDays = (rows: { competence_date: string | null; cash_date: string | null }[] | null) => {
+        if (!rows || rows.length === 0) return null;
+        let total = 0;
+        let n = 0;
+        for (const r of rows) {
+          if (!r.competence_date || !r.cash_date) continue;
+          const d = (new Date(r.cash_date).getTime() - new Date(r.competence_date).getTime()) / 86_400_000;
+          if (Number.isFinite(d) && d >= 0) {
+            total += d;
+            n += 1;
+          }
         }
-      }
-      const today2 = new Date();
-      const monthStart = new Date(today2.getFullYear(), today2.getMonth(), 1).toISOString().slice(0, 10);
-      const { data: dre } = await supabase
-        .from("dre_base")
-        .select("amount_signed")
-        .eq("company_id", companyId!)
-        .eq("dre_group", "Receita Líquida")
-        .gte("competence_date", monthStart)
-        .lte("competence_date", today);
-      const receita = (dre ?? []).reduce((s, x) => s + Number(x.amount_signed ?? 0), 0);
+        return n > 0 ? total / n : null;
+      };
+
+      const snap = snapRes.data;
+      const pmrDyn = avgDays(pmrRes.data ?? null);
+      const pmpDyn = avgDays(pmpRes.data ?? null);
+      // Fallback para snapshot quando não há liquidações no período.
+      const pmr = pmrDyn ?? Number(snap?.pmr ?? 0);
+      const pmp = pmpDyn ?? Number(snap?.pmp ?? 0);
+      const pme = pmeParamRes.data?.param_value != null
+        ? Number(pmeParamRes.data.param_value)
+        : Number(snap?.pme ?? 0);
+      const cicloOperacional = pmr + pme;
+      const cicloFinanceiro = pmr + pme - pmp;
+      const receita = (dreRes.data ?? []).reduce((s, x) => s + Number(x.amount_signed ?? 0), 0);
+      // NCG ≈ ciclo financeiro * (receita diária do período)
+      const rangeDays = Math.max(
+        1,
+        Math.round(
+          (new Date(range.end).getTime() - new Date(range.start).getTime()) / 86_400_000,
+        ) + 1,
+      );
+      const receitaDiaria = receita / rangeDays;
+      const ncg = cicloFinanceiro > 0 ? cicloFinanceiro * receitaDiaria : Number(snap?.necessidade_capital_giro ?? 0);
       return {
-        pmr: Number(r.pmr ?? 0),
-        pmp: Number(r.pmp ?? 0),
-        pme: Number(r.pme ?? 0),
-        cicloOperacional: Number(r.ciclo_operacional ?? 0),
-        cicloFinanceiro: Number(r.ciclo_financeiro ?? 0),
-        ncg: Number(r.ncg ?? 0),
+        pmr,
+        pmp,
+        pme,
+        cicloOperacional,
+        cicloFinanceiro,
+        ncg,
         receitaLiquidaMes: receita,
       };
     },
