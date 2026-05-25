@@ -1404,7 +1404,9 @@ export function useBulkUpsertCategoryMappings(companyId: string | null | undefin
         (existing ?? []).map((r) => [String(r.omie_category_code).trim(), r]),
       );
 
-      const inserts: Array<Record<string, unknown>> = [];
+      type CategoryMappingInsert = Database["public"]["Tables"]["category_mapping"]["Insert"];
+      type CategoryMappingUpdate = Database["public"]["Tables"]["category_mapping"]["Update"];
+      const inserts: CategoryMappingInsert[] = [];
 
       for (const r of rows) {
         const code = String(r.omie_category_code ?? "").trim();
@@ -1419,7 +1421,7 @@ export function useBulkUpsertCategoryMappings(companyId: string | null | undefin
 
         const found = byCode.get(code);
         if (found) {
-          const patch: Record<string, unknown> = {};
+          const patch: CategoryMappingUpdate = {};
           if (r.dre_category !== undefined) patch.dre_category = r.dre_category || null;
           if (r.dfc_category !== undefined) patch.dfc_category = r.dfc_category || null;
           if (r.omie_category_description) patch.omie_category_description = r.omie_category_description;
@@ -1428,7 +1430,7 @@ export function useBulkUpsertCategoryMappings(companyId: string | null | undefin
             skipped += 1;
             continue;
           }
-          const { error } = await supabase.from("category_mapping").update(patch).eq("id", found.id);
+          const { error } = await supabase.from("category_mapping").update(patch).eq("id", found.id as string);
           if (error) throw error;
           updated += 1;
         } else {
