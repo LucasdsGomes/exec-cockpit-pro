@@ -89,7 +89,16 @@ function AdminPage() {
     const running = since.find((b) => b.status === "running" || b.status === "pending");
     const completed = Math.min(done.size, FULL_SYNC_TOTAL);
     const pct = Math.min(100, Math.round((completed / FULL_SYNC_TOTAL) * 100));
-    return { completed, total: FULL_SYNC_TOTAL, pct, currentEndpoint: running?.source_endpoint ?? null };
+    const hasRecentActivity = since.length > 0;
+    const stalled = !running && hasRecentActivity && pct < 100;
+    return {
+      completed,
+      total: FULL_SYNC_TOTAL,
+      pct,
+      currentEndpoint: running?.source_endpoint ?? null,
+      stalled,
+      hasRecentActivity,
+    };
   }, [fullSyncStartedAt, batches.data]);
 
   useEffect(() => {
@@ -156,13 +165,17 @@ function AdminPage() {
         </div>
       </header>
 
-      {fullSyncProgress && (
+      {fullSyncProgress && fullSyncProgress.hasRecentActivity && (
         <Card className="bg-card border-border">
           <CardContent className="py-4 space-y-2">
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-2 font-medium">
-                <Loader2 className="size-4 text-primary animate-spin" />
-                Sincronização completa em andamento
+                {fullSyncProgress.stalled ? (
+                  <AlertTriangle className="size-4 text-warning" />
+                ) : (
+                  <Loader2 className="size-4 text-primary animate-spin" />
+                )}
+                {fullSyncProgress.stalled ? "Sincronização completa sem atividade recente" : "Sincronização completa em andamento"}
               </div>
               <div className="tabular-nums text-muted-foreground">
                 {fullSyncProgress.completed}/{fullSyncProgress.total} endpoints
@@ -174,6 +187,11 @@ function AdminPage() {
             {fullSyncProgress.currentEndpoint && (
               <div className="text-xs text-muted-foreground font-mono">
                 Processando: {fullSyncProgress.currentEndpoint}
+              </div>
+            )}
+            {fullSyncProgress.stalled && (
+              <div className="text-xs text-warning">
+                Nenhum lote está em execução agora. Se o progresso não avançar, dispare novamente apenas o endpoint com erro.
               </div>
             )}
           </CardContent>
