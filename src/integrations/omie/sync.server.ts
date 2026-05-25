@@ -1132,7 +1132,7 @@ async function upsertBankMovementForAccount(item: AnyRec, companyId: string, ban
   return { inserted: error ? 0 : 1, updated: 0, errors: error ? 1 : 0 };
 }
 
-// --- Bank balances sync (ListarPosicaoBancaria) ---
+// --- Bank balances sync (saldo/saldo ListarSaldo, por conta) ---
 
 async function runBankBalancesSync(opts: {
   companyId: string;
@@ -1141,72 +1141,63 @@ async function runBankBalancesSync(opts: {
   const def = OMIE_ENDPOINTS.saldos_bancarios;
   const start = Date.now();
   const today = new Date().toISOString().slice(0, 10);
+  const dDataPos = `${today.slice(8, 10)}/${today.slice(5, 7)}/${today.slice(0, 4)}`;
   const batchId = await startBatch(opts.companyId, def.endpoint, opts.triggeredBy, { call: def.call });
   await logToDb(opts.companyId, batchId, "info", "Iniciando sync de saldos bancários", def.endpoint, {});
 
   let inserted = 0, updated = 0, errors = 0, total = 0;
   try {
-    // ListarPosicaoBancaria não pagina (retorna posição atual de todas as contas)
-    const res = await callOmie({
-      endpoint: def.endpoint,
-      call: def.call,
-      param: { dDataPosicao: `${today.slice(8, 10)}/${today.slice(5, 7)}/${today.slice(0, 4)}` },
-      timeoutMs: 30_000,
-    });
-    if (!res.ok) {
-      errors += 1;
-      await recordError(opts.companyId, batchId, def.endpoint, res.faultstring ?? `HTTP ${res.status}`, null);
-      await finishBatch(batchId, "error", 0, 1, 0);
-      return { key: "saldos_bancarios", batchId, inserted, updated, errors, durationMs: Date.now() - start };
+    // OMIE saldo/saldo (ListarSaldo) consulta uma conta por vez (nCodCC + dDataPosicao)
+    const { data: accounts } = await supabaseAdmin
+      .from("bank_accounts")
+      .select("id, source_record_id, name")
+      .eq("company_id", opts.companyId)
+      .eq("active", true);
+    const list = (accounts ?? []).filter((a) => a.source_record_id);
+    if (list.length === 0) {
+      await logToDb(opts.companyId, batchId, "warn", "Nenhuma conta bancária configurada", def.endpoint, {});
     }
 
-    await supabaseAdmin.from("omie_raw_payloads").insert({
-      company_id: opts.companyId,
-      batch_id: batchId,
-      source_endpoint: def.endpoint,
-      source_record_id: `posicao:${today}`,
-      payload: res.data as never,
-    });
-
-    const data = (res.data ?? {}) as AnyRec;
-    // Tenta múltiplos formatos de retorno conhecidos do Omie
-    const items: AnyRec[] = (
-      (data["ListaSaldo"] as AnyRec[] | undefined)
-      ?? (data["lista_saldo"] as AnyRec[] | undefined)
-      ?? (data["listaContas"] as AnyRec[] | undefined)
-      ?? (data["saldos"] as AnyRec[] | undefined)
-      ?? []
-    );
-
-    for (const item of items) {
+    for (const acc of list) {
+      const ncod = Number(acc.source_record_id);
+      if (!Number.isFinite(ncod)) continue;
       total += 1;
       try {
-        const ncod = asString(item["nCodCC"] ?? item["codigo_conta"]);
-        if (!ncod) continue;
+        const res = await callOmie({
+          endpoint: def.endpoint,
+          call: def.call,
+          param: { nCodCC: ncod, dDataPosicao: dDataPos },
+          timeoutMs: 30_000,
+        });
+        if (!res.ok) {
+          errors += 1;
+          await recordError(opts.companyId, batchId, def.endpoint, res.faultstring ?? `HTTP ${res.status}`, { acc: acc.id, ncod });
+          await new Promise((r) => setTimeout(r, 600));
+          continue;
+        }
+        await supabaseAdmin.from("omie_raw_payloads").insert({
+          company_id: opts.companyId,
+          batch_id: batchId,
+          source_endpoint: def.endpoint,
+          source_record_id: `acc:${acc.source_record_id}:${today}`,
+          payload: res.data as never,
+        });
+
+        const item = (res.data ?? {}) as AnyRec;
         const balance = asNumber(item["nSaldoAtual"] ?? item["saldo_atual"] ?? item["nSaldo"] ?? 0);
         const blocked = asNumber(item["nSaldoBloqueado"] ?? item["saldo_bloqueado"] ?? 0);
         const dt = brDateToISO(item["dDtSaldo"] ?? item["data_saldo"]) ?? today;
 
-        const { data: ba } = await supabaseAdmin
-          .from("bank_accounts").select("id")
-          .eq("company_id", opts.companyId)
-          .eq("source_record_id", ncod)
-          .maybeSingle();
-        if (!ba) {
-          await logToDb(opts.companyId, batchId, "warn", `Conta ${ncod} não cadastrada`, def.endpoint, { ncod });
-          continue;
-        }
-
         const { data: existing } = await supabaseAdmin
           .from("bank_balances_snapshots").select("id")
           .eq("company_id", opts.companyId)
-          .eq("bank_account_id", ba.id)
+          .eq("bank_account_id", acc.id)
           .eq("snapshot_date", dt)
           .maybeSingle();
 
         const payload = {
           company_id: opts.companyId,
-          bank_account_id: ba.id,
+          bank_account_id: acc.id,
           snapshot_date: dt,
           balance,
           blocked,
@@ -1223,8 +1214,10 @@ async function runBankBalancesSync(opts: {
         }
       } catch (e) {
         errors += 1;
-        await recordError(opts.companyId, batchId, def.endpoint, e instanceof Error ? e.message : String(e), item);
+        await recordError(opts.companyId, batchId, def.endpoint, e instanceof Error ? e.message : String(e), { acc: acc.id });
       }
+      // pacing para evitar bloqueio do OMIE
+      await new Promise((r) => setTimeout(r, 600));
     }
 
     const status = errors === 0 ? "success" : (inserted + updated > 0 ? "partial" : "error");
