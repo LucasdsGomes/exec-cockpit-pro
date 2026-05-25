@@ -69,6 +69,7 @@ function AdminPage() {
   const [activeTab, setActiveTab] = useState("sync");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [fullSyncStartedAt, setFullSyncStartedAt] = useState<number | null>(null);
+  const hasActiveSync = (batches.data ?? []).some((b) => b.status === "running" || b.status === "pending");
 
   useEffect(() => {
     if (!cid) return;
@@ -154,11 +155,11 @@ function AdminPage() {
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" onClick={handleFullSync} disabled={fullSync.isPending} className="gap-2">
+          <Button variant="outline" onClick={handleFullSync} disabled={fullSync.isPending || hasActiveSync} className="gap-2">
             {fullSync.isPending ? <Loader2 className="size-4 animate-spin" /> : <DownloadCloud className="size-4" />}
             Sincronizar tudo
           </Button>
-          <Button onClick={handleSync} disabled={triggerSync.isPending} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
+          <Button onClick={handleSync} disabled={triggerSync.isPending || hasActiveSync} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
             {triggerSync.isPending ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
             Sincronizar agora
           </Button>
