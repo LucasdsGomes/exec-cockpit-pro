@@ -889,7 +889,7 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
         break;
       case "fornecedores":
         // Fornecedores são populados no mesmo passo de "clientes" via auto-detecção por tags.
-        r = { inserted: 0, updated: 0, errors: 0, total: 0 };
+        r = { key, batchId: "", inserted: 0, updated: 0, errors: 0, durationMs: 0 };
         break;
       case "contas_pagar":
         r = await runSliced(key, (item, batchId) => upsertFinancialEntry(mapContaPagar(item, opts.companyId, batchId)));
