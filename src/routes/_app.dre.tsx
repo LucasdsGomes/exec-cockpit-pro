@@ -224,12 +224,15 @@ function DREPage() {
 function marginGross(dre: DRELine[]): number {
   const r = dre.find((d) => d.conta.includes("Receita Líquida"))?.valor ?? 0;
   const m = dre.find((d) => d.conta.includes("Margem Bruta"))?.valor ?? 0;
-  return r ? (m / r) * 100 : 0;
+  if (!r || Math.abs(r) < 1) return NaN;
+  return (m / r) * 100;
 }
 
 function formatMarginGross(value: number): string {
-  if (!Number.isFinite(value)) return "0.0%";
-  if (Math.abs(value) >= 1000) return `${value.toFixed(0)}%`;
+  if (!Number.isFinite(value)) return "n/d";
+  // Above ±999% the ratio loses financial meaning (receita base muito baixa)
+  if (Math.abs(value) > 999) return "n/d";
+  if (Math.abs(value) >= 100) return `${value.toFixed(0)}%`;
   return `${value.toFixed(1)}%`;
 }
 
