@@ -67,8 +67,8 @@ function AdminPage() {
 
   const handleSync = () => {
     toast.promise(triggerSync.mutateAsync(), {
-      loading: "Sincronizando últimos 7 dias...",
-      success: "Sincronização concluída",
+      loading: "Disparando sincronização...",
+      success: "Sincronização iniciada — acompanhe o progresso abaixo",
       error: (e) => `Erro: ${e.message}`,
     });
   };
@@ -76,11 +76,8 @@ function AdminPage() {
   const handleFullSync = () => {
     if (!confirm("Isso vai recarregar TODOS os endpoints da Omie desde o início (~10 anos). Pode demorar vários minutos. Continuar?")) return;
     toast.promise(fullSync.mutateAsync(), {
-      loading: "Sincronização completa em andamento (pode levar minutos)…",
-      success: (r) => {
-        const t = r.totals;
-        return `Sync completa · ${t?.inserted ?? 0} novos, ${t?.updated ?? 0} atualizados`;
-      },
+      loading: "Disparando sincronização completa…",
+      success: "Sync completa iniciada em background — pode levar vários minutos",
       error: (e) => `Erro: ${e.message}`,
     });
   };
