@@ -26,14 +26,37 @@ export function useCycleMetrics(companyId: string | null | undefined) {
     enabled: !!companyId,
     queryFn: async (): Promise<CycleMetrics> => {
       const today = new Date().toISOString().slice(0, 10);
-      const { data, error } = await supabase.rpc("compute_financial_cycle", {
-        _company: companyId!,
-        _period: today,
-      });
-      if (error || !data || !Array.isArray(data) || data.length === 0) {
-        return { pmr: 0, pmp: 0, pme: 0, cicloOperacional: 0, cicloFinanceiro: 0, ncg: 0, receitaLiquidaMes: 0 };
+      // Read latest persisted metrics from financial_cycle_metrics (source of truth).
+      const { data: metricsRow } = await supabase
+        .from("financial_cycle_metrics")
+        .select("pmr, pmp, pme, ciclo_operacional, ciclo_financeiro, necessidade_capital_giro")
+        .eq("company_id", companyId!)
+        .order("reference_period", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      let r: Record<string, number | null> = {};
+      if (metricsRow) {
+        r = {
+          pmr: metricsRow.pmr,
+          pmp: metricsRow.pmp,
+          pme: metricsRow.pme,
+          ciclo_operacional: metricsRow.ciclo_operacional,
+          ciclo_financeiro: metricsRow.ciclo_financeiro,
+          ncg: metricsRow.necessidade_capital_giro,
+        };
+      } else {
+        // Fallback: compute on the fly if no snapshot exists.
+        const { data } = await supabase.rpc("compute_financial_cycle", {
+          _company: companyId!,
+          _period: today,
+        });
+        if (data && Array.isArray(data) && data.length > 0) {
+          r = data[0] as Record<string, number | null>;
+        } else {
+          return { pmr: 0, pmp: 0, pme: 0, cicloOperacional: 0, cicloFinanceiro: 0, ncg: 0, receitaLiquidaMes: 0 };
+        }
       }
-      const r = data[0] as Record<string, number | null>;
       const today2 = new Date();
       const monthStart = new Date(today2.getFullYear(), today2.getMonth(), 1).toISOString().slice(0, 10);
       const { data: dre } = await supabase
