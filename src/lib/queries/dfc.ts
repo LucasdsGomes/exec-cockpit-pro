@@ -258,16 +258,20 @@ export function useCashProjection(
         ? Number(paramRes.data.param_value)
         : null;
 
-      let saldo = saldoAtual;
+      const round2 = (n: number) => Math.round(n * 100) / 100;
+
+      let saldo = round2(saldoAtual);
       let totalEntradas = 0;
       let totalSaidas = 0;
       let minSaldo = saldo;
       let minSaldoDate: string | null = null;
       const series: CashProjectionPoint[] = [];
       for (const [dateStr, v] of days) {
-        saldo += v.entrada - v.saida;
-        totalEntradas += v.entrada;
-        totalSaidas += v.saida;
+        const entrada = round2(v.entrada);
+        const saida = round2(v.saida);
+        saldo = round2(saldo + entrada - saida);
+        totalEntradas = round2(totalEntradas + entrada);
+        totalSaidas = round2(totalSaidas + saida);
         if (saldo < minSaldo) {
           minSaldo = saldo;
           minSaldoDate = dateStr;
@@ -275,8 +279,8 @@ export function useCashProjection(
         series.push({
           date: dateStr,
           dia: shortDateBR(dateStr),
-          entrada: v.entrada,
-          saida: v.saida,
+          entrada,
+          saida,
           saldo,
           belowMin: saldoMinimoConfig != null && saldo < saldoMinimoConfig,
         });
