@@ -917,9 +917,42 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
         break;
       case "contas_pagar":
         r = await runSliced(key, (item, batchId) => upsertFinancialEntry(mapContaPagar(item, opts.companyId, batchId)));
+        {
+          // Complementa o slice por emissão com uma janela por VENCIMENTO
+          // (hoje → hoje+90d) para garantir que títulos antigos com vencimento
+          // futuro entrem na base e alimentem a Projeção de Caixa 30d.
+          const futureFrom = new Date();
+          const futureTo = new Date(Date.now() + 90 * 86_400_000);
+          const dueParam = {
+            pagina: 1,
+            registros_por_pagina: 200,
+            filtrar_por_data_de: fmt(futureFrom),
+            filtrar_por_data_ate: fmt(futureTo),
+          };
+          const rDue = await runListEndpoint({
+            key, companyId: opts.companyId, triggeredBy, param: dueParam,
+            upsert: (item, batchId) => upsertFinancialEntry(mapContaPagar(item, opts.companyId, batchId)),
+          });
+          r = { key, batchId: rDue.batchId, inserted: r.inserted + rDue.inserted, updated: r.updated + rDue.updated, errors: r.errors + rDue.errors, durationMs: r.durationMs + rDue.durationMs };
+        }
         break;
       case "contas_receber":
         r = await runSliced(key, (item, batchId) => upsertFinancialEntry(mapContaReceber(item, opts.companyId, batchId)));
+        {
+          const futureFrom = new Date();
+          const futureTo = new Date(Date.now() + 90 * 86_400_000);
+          const dueParam = {
+            pagina: 1,
+            registros_por_pagina: 200,
+            filtrar_por_data_de: fmt(futureFrom),
+            filtrar_por_data_ate: fmt(futureTo),
+          };
+          const rDue = await runListEndpoint({
+            key, companyId: opts.companyId, triggeredBy, param: dueParam,
+            upsert: (item, batchId) => upsertFinancialEntry(mapContaReceber(item, opts.companyId, batchId)),
+          });
+          r = { key, batchId: rDue.batchId, inserted: r.inserted + rDue.inserted, updated: r.updated + rDue.updated, errors: r.errors + rDue.errors, durationMs: r.durationMs + rDue.durationMs };
+        }
         break;
       case "movimentacoes_bancarias":
         r = await runBankStatementsSync({
