@@ -1059,8 +1059,8 @@ async function runBankStatementsSync(opts: {
           call: def.call,
           param: {
             nCodCC: ncod,
-            dDtInicial: fmt(dStart),
-            dDtFinal: fmt(dEnd),
+            dPeriodoInicial: fmt(dStart),
+            dPeriodoFinal: fmt(dEnd),
           },
           pageKey: "nPagina",
           pageSizeKey: "nRegPorPagina",
@@ -1097,6 +1097,8 @@ async function runBankStatementsSync(opts: {
         errors += 1;
         await recordError(opts.companyId, batchId, def.endpoint, e instanceof Error ? e.message : String(e), { acc: acc.id });
       }
+      // Pacing entre contas para evitar bloqueio "API bloqueada por consumo indevido"
+      await new Promise((r) => setTimeout(r, 600));
     }
     const status = errors === 0 ? "success" : (inserted + updated > 0 ? "partial" : "error");
     await finishBatch(batchId, status, inserted + updated, errors, total);
