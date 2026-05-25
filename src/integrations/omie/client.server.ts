@@ -29,6 +29,55 @@ function getCredentials() {
 }
 
 export async function callOmie<T = unknown>(opts: OmieCallOptions): Promise<OmieResponse<T>> {
+  return omieGate(() => callOmieRaw<T>(opts));
+}
+
+// ---- Global throttle + retry ----
+// OMIE rejects parallel requests for the same method with:
+//   "Já existe uma requisição desse método sendo executada..."
+// and applies aggressive rate limits ("API bloqueada por consumo indevido").
+// We serialize ALL outbound calls and add small spacing between them, plus
+// a short retry loop for transient "Já existe..." errors.
+let omieChain: Promise<unknown> = Promise.resolve();
+const OMIE_MIN_SPACING_MS = 350;
+let lastOmieCallAt = 0;
+
+function omieGate<T>(task: () => Promise<T>): Promise<T> {
+  const run = omieChain.then(async () => {
+    const wait = OMIE_MIN_SPACING_MS - (Date.now() - lastOmieCallAt);
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    try {
+      return await task();
+    } finally {
+      lastOmieCallAt = Date.now();
+    }
+  });
+  omieChain = run.catch(() => undefined);
+  return run as Promise<T>;
+}
+
+async function callOmieRaw<T = unknown>(opts: OmieCallOptions): Promise<OmieResponse<T>> {
+  const maxAttempts = 4;
+  let attempt = 0;
+  let last: OmieResponse<T> | null = null;
+  while (attempt < maxAttempts) {
+    attempt += 1;
+    const res = await callOmieOnce<T>(opts);
+    if (res.ok) return res;
+    const msg = (res.faultstring ?? "").toLowerCase();
+    // Retry on transient concurrency/lock errors only.
+    if (msg.includes("já existe uma requisição") || msg.includes("api bloqueada")) {
+      const backoff = msg.includes("api bloqueada") ? 5_000 : 1_200 * attempt;
+      await new Promise((r) => setTimeout(r, backoff));
+      last = res;
+      continue;
+    }
+    return res;
+  }
+  return last ?? { ok: false, status: 0, faultstring: "OMIE retries exhausted" };
+}
+
+async function callOmieOnce<T = unknown>(opts: OmieCallOptions): Promise<OmieResponse<T>> {
   const { app_key, app_secret } = getCredentials();
   const base = opts.baseUrl ?? DEFAULT_BASE;
   const url = `${base.replace(/\/$/, "")}/${opts.endpoint.replace(/^\//, "")}/`;
