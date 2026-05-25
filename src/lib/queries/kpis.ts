@@ -107,11 +107,33 @@ export function useKpis(
         pmpQ = pmpQ.eq("cost_center_id", cc);
       }
 
+      // Saldo de caixa ao final do período = initial_balances (caixa) + dfc_realized_base até range.end
+      const ibQ = supabase
+        .from("initial_balances")
+        .select("amount, balance_type")
+        .eq("company_id", companyId!)
+        .lte("reference_date", range.end);
+      let realCashQ = supabase
+        .from("dfc_realized_base")
+        .select("amount_signed, cash_date")
+        .eq("company_id", companyId!)
+        .lte("cash_date", range.end);
+      if (ba) realCashQ = realCashQ.eq("bank_account_id", ba);
+      // Geração de caixa do período = soma de amount_signed em dfc_realized_base dentro do range
+      let geracaoQ = supabase
+        .from("dfc_realized_base")
+        .select("amount_signed")
+        .eq("company_id", companyId!)
+        .gte("cash_date", range.start)
+        .lte("cash_date", range.end);
+      if (ba) geracaoQ = geracaoQ.eq("bank_account_id", ba);
+
       const [
         currTotals, prevTotals,
         payables, receivables,
-        accountsRes, snapshotRes,
+        accountsRes,
         pmrRes, pmpRes,
+        ibRes, realCashRes, geracaoRes,
       ] = await Promise.all([
         aggregateDre(companyId!, range, { costCenterId: cc, businessUnit: bu }),
         aggregateDre(companyId!, prev, { costCenterId: cc, businessUnit: bu }),
@@ -124,15 +146,11 @@ export function useKpis(
               .select("id")
               .eq("company_id", companyId!)
               .eq("active", true),
-        supabase
-          .from("dashboard_kpi_snapshots")
-          .select("*")
-          .eq("company_id", companyId!)
-          .order("snapshot_date", { ascending: false })
-          .limit(1)
-          .maybeSingle(),
         pmrQ,
         pmpQ,
+        ibQ,
+        realCashQ,
+        geracaoQ,
       ]);
 
       const curr = computeDreSubtotals(currTotals);
@@ -171,9 +189,46 @@ export function useKpis(
       const pmp = avgDays(pmpRes.data as Array<{ competence_date: string | null; cash_date: string | null }> | null);
       const cicloFinanceiro = pmr - pmp;
 
-      const snap = snapshotRes.data as Record<string, number | null> | null;
-      const saldoCaixa = Number(snap?.caixa_final ?? 0);
-      const projecaoCaixa30d = Number(snap?.projecao_caixa_30d ?? 0) || (saldoCaixa + contasReceber7d - contasPagar7d);
+      // Saldo de caixa ao fim do período (initial balances de caixa + realizado até range.end)
+      const round2 = (n: number) => Math.round(n * 100) / 100;
+      const saldoIniCaixa = (ibRes.data ?? [])
+        .filter((x) => String(x.balance_type ?? "").toLowerCase().includes("caix"))
+        .reduce((s, x) => s + Number(x.amount ?? 0), 0);
+      const realizadoAteFim = (realCashRes.data ?? []).reduce(
+        (s, x) => s + Number(x.amount_signed ?? 0),
+        0,
+      );
+      const saldoCaixa = round2(saldoIniCaixa + realizadoAteFim);
+      const geracaoPeriodo = round2(
+        (geracaoRes.data ?? []).reduce((s, x) => s + Number(x.amount_signed ?? 0), 0),
+      );
+      // Projeção 30d a partir do fim do período: saldoCaixa + (receber 30d - pagar 30d)
+      const proj30Start = range.end;
+      const proj30End = new Date(new Date(range.end + "T00:00:00").getTime() + 30 * 86_400_000)
+        .toISOString().slice(0, 10);
+      const [payProj, recProj] = await Promise.all([
+        supabase
+          .from("payable_entries")
+          .select("amount, paid_amount")
+          .eq("company_id", companyId!)
+          .gte("due_date", proj30Start)
+          .lte("due_date", proj30End),
+        supabase
+          .from("receivable_entries")
+          .select("amount, received_amount")
+          .eq("company_id", companyId!)
+          .gte("due_date", proj30Start)
+          .lte("due_date", proj30End),
+      ]);
+      const pay30 = (payProj.data ?? []).reduce(
+        (s, r) => s + (Number(r.amount ?? 0) - Number(r.paid_amount ?? 0)),
+        0,
+      );
+      const rec30 = (recProj.data ?? []).reduce(
+        (s, r) => s + (Number(r.amount ?? 0) - Number(r.received_amount ?? 0)),
+        0,
+      );
+      const projecaoCaixa30d = round2(saldoCaixa + rec30 - pay30);
 
       return {
         receitaLiquida: receita,
@@ -185,7 +240,7 @@ export function useKpis(
         resultadoLiquidoVar: pctVar(resultado, resultadoPrev),
         saldoCaixa,
         saldoCaixaVar: 0,
-        geracaoCaixa: contasReceber7d - contasPagar7d,
+        geracaoCaixa: geracaoPeriodo,
         projecaoCaixa30d,
         contasPagar7d,
         contasReceber7d,
