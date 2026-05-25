@@ -779,6 +779,21 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
   const list = (opts.endpoints && opts.endpoints.length > 0) ? opts.endpoints : OMIE_PRIORITY_ORDER;
   const triggeredBy = opts.triggeredBy ?? null;
 
+  // Reap stuck batches: any batch left in `running` for >15 min is a casualty
+  // of the Worker being killed mid-execution (CPU/wall-time limit). Mark them
+  // as `error` so the UI stops showing them as "rodando" indefinidamente.
+  try {
+    const cutoff = new Date(Date.now() - 15 * 60_000).toISOString();
+    await supabaseAdmin
+      .from("omie_raw_sync_batches")
+      .update({ status: "error", finished_at: new Date().toISOString() })
+      .eq("company_id", opts.companyId)
+      .eq("status", "running")
+      .lt("started_at", cutoff);
+  } catch (e) {
+    logCtx("warn", "reap stuck batches failed", { error: e instanceof Error ? e.message : String(e) });
+  }
+
   // Build date filter for transactional endpoints
   const today = new Date();
   const fmt = (d: Date) => `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
@@ -790,6 +805,64 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
     registros_por_pagina: 200,
     filtrar_por_emissao_de: fmt(start),
     filtrar_por_emissao_ate: fmt(end),
+  };
+
+  // Slice the [start, end] range into yearly windows so each batch fits inside
+  // the Worker time budget. For wide ranges (full sync = ~10 anos), a single
+  // batch would call Omie hundreds of times and get killed mid-flight.
+  const periodSlices: Array<{ from: Date; to: Date }> = [];
+  {
+    const spanMs = end.getTime() - start.getTime();
+    const ONE_YEAR_MS = 366 * 86_400_000;
+    if (spanMs <= ONE_YEAR_MS) {
+      periodSlices.push({ from: start, to: end });
+    } else {
+      let cursor = new Date(start);
+      while (cursor <= end) {
+        const sliceEnd = new Date(cursor);
+        sliceEnd.setFullYear(sliceEnd.getFullYear() + 1);
+        sliceEnd.setDate(sliceEnd.getDate() - 1);
+        const to = sliceEnd > end ? end : sliceEnd;
+        periodSlices.push({ from: new Date(cursor), to });
+        cursor = new Date(to);
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    }
+  }
+  const buildPeriodFilter = (from: Date, to: Date) => ({
+    pagina: 1,
+    registros_por_pagina: 200,
+    filtrar_por_emissao_de: fmt(from),
+    filtrar_por_emissao_ate: fmt(to),
+  });
+
+  // Helper: aggregate multiple slice results into a single endpoint entry.
+  const runSliced = async (
+    key: OmieEndpointKey,
+    upsert: (item: AnyRec, batchId: string) => Promise<{ inserted: number; updated: number; errors: number }>,
+  ): Promise<SyncRunResult["endpoints"][number]> => {
+    const sliceResults: SyncRunResult["endpoints"][number][] = [];
+    for (const slice of periodSlices) {
+      const r = await runListEndpoint({
+        key,
+        companyId: opts.companyId,
+        triggeredBy,
+        param: buildPeriodFilter(slice.from, slice.to),
+        upsert,
+      });
+      sliceResults.push(r);
+    }
+    return sliceResults.reduce(
+      (acc, r) => ({
+        key,
+        batchId: r.batchId, // last batch
+        inserted: acc.inserted + r.inserted,
+        updated: acc.updated + r.updated,
+        errors: acc.errors + r.errors,
+        durationMs: acc.durationMs + r.durationMs,
+      }),
+      { key, batchId: "", inserted: 0, updated: 0, errors: 0, durationMs: 0 },
+    );
   };
 
   const results: SyncRunResult["endpoints"] = [];
@@ -814,10 +887,10 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
         r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: { apenas_importado_api: "N", clientesFiltro: { cliente_fornecedor: "F" } }, upsert: (item) => upsertCustomerOrSupplier(item, opts.companyId, "fornecedor") });
         break;
       case "contas_pagar":
-        r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: periodFilter, upsert: (item, batchId) => upsertFinancialEntry(mapContaPagar(item, opts.companyId, batchId)) });
+        r = await runSliced(key, (item, batchId) => upsertFinancialEntry(mapContaPagar(item, opts.companyId, batchId)));
         break;
       case "contas_receber":
-        r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: periodFilter, upsert: (item, batchId) => upsertFinancialEntry(mapContaReceber(item, opts.companyId, batchId)) });
+        r = await runSliced(key, (item, batchId) => upsertFinancialEntry(mapContaReceber(item, opts.companyId, batchId)));
         break;
       case "movimentacoes_bancarias":
         r = await runBankStatementsSync({
@@ -835,40 +908,16 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
         });
         break;
       case "pedidos_venda":
-        r = await runListEndpoint({
-          key,
-          companyId: opts.companyId,
-          triggeredBy,
-          param: periodFilter,
-          upsert: (item, batchId) => upsertCommitment(mapPedidoVenda(item, opts.companyId, batchId)),
-        });
+        r = await runSliced(key, (item, batchId) => upsertCommitment(mapPedidoVenda(item, opts.companyId, batchId)));
         break;
       case "ordens_compra":
-        r = await runListEndpoint({
-          key,
-          companyId: opts.companyId,
-          triggeredBy,
-          param: periodFilter,
-          upsert: (item, batchId) => upsertCommitment(mapOrdemCompra(item, opts.companyId, batchId)),
-        });
+        r = await runSliced(key, (item, batchId) => upsertCommitment(mapOrdemCompra(item, opts.companyId, batchId)));
         break;
       case "notas_fiscais_emitidas":
-        r = await runListEndpoint({
-          key,
-          companyId: opts.companyId,
-          triggeredBy,
-          param: periodFilter,
-          upsert: (item, batchId) => upsertFiscalDoc(mapNFe(item, opts.companyId, batchId)),
-        });
+        r = await runSliced(key, (item, batchId) => upsertFiscalDoc(mapNFe(item, opts.companyId, batchId)));
         break;
       case "notas_servico_emitidas":
-        r = await runListEndpoint({
-          key,
-          companyId: opts.companyId,
-          triggeredBy,
-          param: periodFilter,
-          upsert: (item, batchId) => upsertFiscalDoc(mapNFSe(item, opts.companyId, batchId)),
-        });
+        r = await runSliced(key, (item, batchId) => upsertFiscalDoc(mapNFSe(item, opts.companyId, batchId)));
         break;
       case "lancamentos_cc":
         r = await runLancamentosCCSync({
