@@ -147,10 +147,20 @@ function DREPage() {
                 <Percent className="size-3.5" strokeWidth={2} />
               </div>
             </div>
-            <div className="mt-4 text-metric text-[clamp(1.75rem,3vw,2.375rem)] leading-none tabular-nums break-words">
-              {formatMarginGross(marginGross(dre))}
-            </div>
-            <p className="mt-3 text-[12px] text-muted-foreground">Bruta / Receita líq.</p>
+            {(() => {
+              const mg = marginGross(dre);
+              const isNd = !Number.isFinite(mg) || Math.abs(mg) > 999;
+              return (
+                <>
+                  <div className="mt-4 text-metric text-[clamp(1.75rem,3vw,2.375rem)] leading-none tabular-nums break-words">
+                    {formatMarginGross(mg)}
+                  </div>
+                  <p className="mt-3 text-[12px] text-muted-foreground">
+                    {isNd ? "Receita líquida insuficiente no período" : "Bruta / Receita líq."}
+                  </p>
+                </>
+              );
+            })()}
           </CardContent>
         </Card>
         <KpiCard label="EBITDA" value={BRL(kpis?.ebitda ?? 0)} delta={kpis?.ebitdaVar ?? 0} icon={Activity} hint={`Margem ${(kpis?.margemEbitda ?? 0).toFixed(1)}%`} accent />
