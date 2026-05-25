@@ -716,14 +716,16 @@ async function upsertCostCenter(item: AnyRec, companyId: string) {
   return { inserted: error ? 0 : 1, updated: 0, errors: error ? 1 : 0 };
 }
 
-async function upsertCustomerOrSupplier(item: AnyRec, companyId: string, kind: "cliente" | "fornecedor") {
+async function upsertCustomerOrSupplier(item: AnyRec, companyId: string, kind: "cliente" | "fornecedor" | "auto") {
   const id = asString(item["codigo_cliente_omie"]);
   const name = asString(item["razao_social"] ?? item["nome_fantasia"]) ?? "—";
   const doc = asString(item["cnpj_cpf"]);
   const email = asString(item["email"]);
   if (!id) return { inserted: 0, updated: 0, errors: 0 };
   const tags = (item["tags"] as AnyRec[] | undefined) ?? [];
-  const isFornecedor = kind === "fornecedor" || tags.some((t) => /forn/i.test(String(t["tag"] ?? "")));
+  const isFornecedor =
+    kind === "fornecedor" ||
+    (kind === "auto" && tags.some((t) => /forn/i.test(String(t["tag"] ?? ""))));
   const table = isFornecedor ? "suppliers" : "customers";
   const { data: existing } = await supabaseAdmin
     .from(table).select("id").eq("company_id", companyId).eq("source_record_id", id).maybeSingle();
@@ -881,10 +883,13 @@ export async function runOmieSync(opts: SyncRunOptions): Promise<SyncRunResult> 
         r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: {}, upsert: (item) => upsertBankAccount(item, opts.companyId) });
         break;
       case "clientes":
-        r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: { apenas_importado_api: "N", clientesFiltro: { cliente_fornecedor: "C" } }, upsert: (item) => upsertCustomerOrSupplier(item, opts.companyId, "cliente") });
+        // OMIE geral/clientes não aceita filtro cliente_fornecedor — busca todos
+        // e distingue cliente/fornecedor pelas tags no upsert.
+        r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: { apenas_importado_api: "N" }, upsert: (item) => upsertCustomerOrSupplier(item, opts.companyId, "auto") });
         break;
       case "fornecedores":
-        r = await runListEndpoint({ key, companyId: opts.companyId, triggeredBy, param: { apenas_importado_api: "N", clientesFiltro: { cliente_fornecedor: "F" } }, upsert: (item) => upsertCustomerOrSupplier(item, opts.companyId, "fornecedor") });
+        // Fornecedores são populados no mesmo passo de "clientes" via auto-detecção por tags.
+        r = { inserted: 0, updated: 0, errors: 0, total: 0 };
         break;
       case "contas_pagar":
         r = await runSliced(key, (item, batchId) => upsertFinancialEntry(mapContaPagar(item, opts.companyId, batchId)));
