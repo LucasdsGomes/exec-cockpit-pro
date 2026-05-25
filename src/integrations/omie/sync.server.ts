@@ -1352,8 +1352,8 @@ async function runLancamentosCCSync(opts: {
           call: def.call,
           param: {
             nCodCC: ncod,
-            dDtInicial: fmt(dStart),
-            dDtFinal: fmt(dEnd),
+            dPeriodoInicial: fmt(dStart),
+            dPeriodoFinal: fmt(dEnd),
           },
           pageKey: "nPagina",
           pageSizeKey: "nRegPorPagina",
@@ -1392,6 +1392,8 @@ async function runLancamentosCCSync(opts: {
         errors += 1;
         await recordError(opts.companyId, batchId, def.endpoint, e instanceof Error ? e.message : String(e), { acc: acc.id });
       }
+      // Pacing entre contas para evitar bloqueio "API bloqueada por consumo indevido"
+      await new Promise((r) => setTimeout(r, 600));
     }
 
     // Pair internal transfers after ingest
