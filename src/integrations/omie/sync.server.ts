@@ -105,6 +105,30 @@ function brDateToISO(s: unknown): string | null {
   return null;
 }
 
+// Extrai a data de liquidação (caixa) de um título OMIE considerando múltiplos formatos:
+// 1) detalhesTitulo.data_pagamento / cabec.data_pagamento (direto)
+// 2) array "lancamentos" (cada baixa traz data_lancamento ou data_pagamento) — usa a maior (última baixa)
+// 3) Se status_titulo indicar PAGO/RECEBIDO/LIQUIDADO e ainda assim não houver data,
+//    usa data_vencimento como fallback (cash competence ≈ vencimento).
+function extractCashDate(cab: AnyRec, det: AnyRec, full: AnyRec): string | null {
+  const direct = brDateToISO(det["data_pagamento"] ?? cab["data_pagamento"] ?? null);
+  if (direct) return direct;
+  const lanc = (full["lancamentos"] as AnyRec[] | undefined)
+    ?? (cab["lancamentos"] as AnyRec[] | undefined)
+    ?? (det["lancamentos"] as AnyRec[] | undefined)
+    ?? [];
+  const dates = lanc
+    .map((l) => brDateToISO(l["data_pagamento"] ?? l["data_lancamento"] ?? l["dPagamento"]))
+    .filter((x): x is string => !!x)
+    .sort();
+  if (dates.length > 0) return dates[dates.length - 1];
+  const status = String(cab["status_titulo"] ?? full["status_titulo"] ?? "").toUpperCase();
+  if (/(PAGO|RECEBIDO|LIQUIDADO|BAIXADO)/.test(status)) {
+    return brDateToISO(cab["data_vencimento"]) ?? brDateToISO(cab["data_emissao"]);
+  }
+  return null;
+}
+
 // --- Mappers ----
 
 type AnyRec = Record<string, unknown>;
@@ -115,7 +139,7 @@ function mapContaPagar(r: AnyRec, companyId: string, batchId: string) {
   const amount = asNumber(cab["valor_documento"] ?? cab["valor_titulo"] ?? 0);
   const due = brDateToISO(cab["data_vencimento"]);
   const competence = brDateToISO(cab["data_emissao"]) ?? due ?? new Date().toISOString().slice(0, 10);
-  const cash = brDateToISO(det["data_pagamento"] ?? cab["data_pagamento"] ?? null);
+  const cash = extractCashDate(cab, det, r);
   const status = cash ? "realizado" : "previsto";
   return {
     company_id: companyId,
@@ -149,7 +173,7 @@ function mapContaReceber(r: AnyRec, companyId: string, batchId: string) {
   const amount = asNumber(cab["valor_documento"] ?? cab["valor_titulo"] ?? 0);
   const due = brDateToISO(cab["data_vencimento"]);
   const competence = brDateToISO(cab["data_emissao"]) ?? due ?? new Date().toISOString().slice(0, 10);
-  const cash = brDateToISO(det["data_pagamento"] ?? cab["data_pagamento"] ?? null);
+  const cash = extractCashDate(cab, det, r);
   const status = cash ? "realizado" : "previsto";
   return {
     company_id: companyId,
