@@ -139,7 +139,20 @@ function DREPage() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard label="Receita líquida" value={BRL(kpis?.receitaLiquida ?? 0)} delta={kpis?.receitaLiquidaVar ?? 0} icon={TrendingUp} hint="vs período anterior" />
-        <KpiCard label="Margem bruta" value={`${marginGross(dre).toFixed(1)}%`} icon={Percent} hint="Bruta / Receita líq." />
+        <Card className="rounded-2xl border-border bg-card shadow-[var(--shadow-card)] overflow-hidden">
+          <CardContent className="p-4 sm:p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="text-eyebrow truncate">Margem Bruta</div>
+              <div className="grid size-7 place-items-center rounded-md bg-muted/60 text-muted-foreground">
+                <Percent className="size-3.5" strokeWidth={2} />
+              </div>
+            </div>
+            <div className="mt-4 text-metric text-[clamp(1.75rem,3vw,2.375rem)] leading-none tabular-nums break-words">
+              {formatMarginGross(marginGross(dre))}
+            </div>
+            <p className="mt-3 text-[12px] text-muted-foreground">Bruta / Receita líq.</p>
+          </CardContent>
+        </Card>
         <KpiCard label="EBITDA" value={BRL(kpis?.ebitda ?? 0)} delta={kpis?.ebitdaVar ?? 0} icon={Activity} hint={`Margem ${(kpis?.margemEbitda ?? 0).toFixed(1)}%`} accent />
         <KpiCard label="Lucro líquido" value={BRL(kpis?.resultadoLiquido ?? 0)} delta={kpis?.resultadoLiquidoVar ?? 0} icon={Wallet} />
       </div>
@@ -212,6 +225,12 @@ function marginGross(dre: DRELine[]): number {
   const r = dre.find((d) => d.conta.includes("Receita Líquida"))?.valor ?? 0;
   const m = dre.find((d) => d.conta.includes("Margem Bruta"))?.valor ?? 0;
   return r ? (m / r) * 100 : 0;
+}
+
+function formatMarginGross(value: number): string {
+  if (!Number.isFinite(value)) return "0.0%";
+  if (Math.abs(value) >= 1000) return `${value.toFixed(0)}%`;
+  return `${value.toFixed(1)}%`;
 }
 
 function EmptyState({ message }: { message: string }) {
