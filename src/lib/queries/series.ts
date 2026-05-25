@@ -128,11 +128,14 @@ export function useCashDaily(
         consume((fcRes.data ?? []).map((r) => ({ date: String(r.forecast_date), v: Number(r.amount_signed ?? 0) })));
       }
 
+      const round2 = (n: number) => Math.round(n * 100) / 100;
       let saldo = 0;
       const result: DayPoint[] = [];
       for (const [dateStr, v] of days) {
-        saldo += v.entrada - v.saida;
-        result.push({ dia: shortDateBR(dateStr), entrada: v.entrada, saida: v.saida, saldo });
+        const entrada = round2(v.entrada);
+        const saida = round2(v.saida);
+        saldo = round2(saldo + entrada - saida);
+        result.push({ dia: shortDateBR(dateStr), entrada, saida, saldo });
       }
       return result;
     },

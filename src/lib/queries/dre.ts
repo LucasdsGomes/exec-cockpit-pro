@@ -53,6 +53,35 @@ async function aggregate(
 }
 
 /**
+ * Regime de caixa: agrega financial_entries pelo cash_date (data de liquidação).
+ * Apenas lançamentos efetivamente liquidados (cash_date NOT NULL) entram aqui.
+ */
+async function aggregateCaixa(
+  companyId: string,
+  range: DateRange,
+  filters?: Pick<GlobalFilters, "costCenterId" | "businessUnit">,
+) {
+  let q = supabase
+    .from("financial_entries")
+    .select("dre_group, amount_signed, cash_date")
+    .eq("company_id", companyId)
+    .not("cash_date", "is", null)
+    .gte("cash_date", range.start)
+    .lte("cash_date", range.end)
+    .eq("affects_dre", true);
+  if (filters?.costCenterId) q = q.eq("cost_center_id", filters.costCenterId);
+  void filters?.businessUnit;
+  const { data } = await q;
+  const totals = new Map<string, number>();
+  for (const r of data ?? []) {
+    if (!r.dre_group) continue;
+    const k = String(r.dre_group);
+    totals.set(k, (totals.get(k) ?? 0) + Number(r.amount_signed ?? 0));
+  }
+  return totals;
+}
+
+/**
  * Aggregate from dre_competencia view (revenue from issued fiscal documents).
  * Falls back to dre_base when the view returns nothing for the company/period
  * (e.g. no fiscal documents synced yet).
@@ -127,7 +156,7 @@ export function useDreLines(
     queryFn: async (): Promise<DRELine[]> => {
       const range = periodToRange(period);
       const prev = previousRange(range);
-      const agg = regime === "competencia" ? aggregateCompetencia : aggregate;
+      const agg = regime === "competencia" ? aggregateCompetencia : aggregateCaixa;
       const [curr, prv, sparks] = await Promise.all([
         agg(companyId!, range, { costCenterId: cc, businessUnit: bu }),
         agg(companyId!, prev, { costCenterId: cc, businessUnit: bu }),
@@ -179,7 +208,7 @@ export function useDreWaterfall(
       const range = periodToRange(period);
       const totals = regime === "competencia"
         ? await aggregateCompetencia(companyId!, range, { costCenterId: cc, businessUnit: bu })
-        : await aggregate(companyId!, range, { costCenterId: cc, businessUnit: bu });
+        : await aggregateCaixa(companyId!, range, { costCenterId: cc, businessUnit: bu });
       const sub = computeDreSubtotals(totals);
       const steps: WaterfallStep[] = [
         { name: "Receita líquida", value: sub.receitaLiquida + sub.outrasReceitas, type: "total" },

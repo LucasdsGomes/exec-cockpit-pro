@@ -57,7 +57,7 @@ function BalancoPage() {
   const liquidezCorrente = passivoCirc > 0 ? ativoCirc / passivoCirc : 0;
 
   const diff = ativoTotal - totalPP;
-  const balanced = Math.abs(diff) < 1000;
+  const balanced = Math.abs(diff) <= 1;
 
   return (
     <div className="space-y-6 anim-fade-in">

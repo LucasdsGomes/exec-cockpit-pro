@@ -33,7 +33,7 @@ export function useBalance(
           .from("balance_projection_daily")
           .select("*")
           .eq("company_id", companyId!)
-          .lte("projection_date", today)
+          .eq("snapshot_date", today)
           .order("projection_date", { ascending: false })
           .limit(1)
           .maybeSingle(),
