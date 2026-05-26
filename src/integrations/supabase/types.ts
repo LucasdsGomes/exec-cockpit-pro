@@ -3324,6 +3324,12 @@ export type Database = {
         Args: { _entry_id: string }
         Returns: boolean
       }
+      close_zombie_sync_batches: {
+        Args: { _max_age_minutes?: number }
+        Returns: {
+          closed_count: number
+        }[]
+      }
       compute_balance_projection: {
         Args: { _company: string; _date: string }
         Returns: string
@@ -3400,6 +3406,18 @@ export type Database = {
       snapshot_kpis: {
         Args: { _company: string; _date: string }
         Returns: string
+      }
+      sync_errors_summary: {
+        Args: { _company: string }
+        Returns: {
+          last_batch_status: string
+          last_error_at: string
+          last_error_message: string
+          open_errors: number
+          severity: string
+          source_endpoint: string
+          total_errors: number
+        }[]
       }
       system_health: { Args: { _company: string }; Returns: Json }
       upsert_bank_movement: {
