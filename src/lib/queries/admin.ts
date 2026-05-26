@@ -291,6 +291,53 @@ export function useSyncLogs(companyId: string | null | undefined) {
   });
 }
 
+// ---------- Sync errors summary (per endpoint) ----------
+
+export interface SyncErrorSummaryRow {
+  source_endpoint: string;
+  total_errors: number;
+  open_errors: number;
+  last_error_at: string | null;
+  last_error_message: string | null;
+  last_batch_status: string | null;
+  severity: "critical" | "warning" | "ok";
+}
+
+export function useSyncErrorsSummary(companyId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["syncErrorsSummary", companyId],
+    enabled: !!companyId,
+    refetchInterval: 15_000,
+    queryFn: async (): Promise<SyncErrorSummaryRow[]> => {
+      const { data, error } = await supabase.rpc("sync_errors_summary", {
+        _company: companyId!,
+      });
+      if (error) throw error;
+      return (data ?? []) as SyncErrorSummaryRow[];
+    },
+  });
+}
+
+export function useResolveSyncErrors(companyId: string | null | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (endpoint: string) => {
+      if (!companyId) throw new Error("Empresa não selecionada");
+      const { error, count } = await supabase
+        .from("omie_sync_errors")
+        .update({ resolved: true, resolved_at: new Date().toISOString() }, { count: "exact" })
+        .eq("company_id", companyId)
+        .eq("source_endpoint", endpoint)
+        .eq("resolved", false);
+      if (error) throw error;
+      return count ?? 0;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["syncErrorsSummary", companyId] });
+    },
+  });
+}
+
 export interface CategoryMappingRow {
   id: string;
   omie_category_code: string;
