@@ -641,16 +641,28 @@ async function runListEndpoint(opts: {
         source_record_id: `page:${page.page}`,
         payload: page.raw as never,
       });
-      for (const item of page.items) {
-        total += 1;
-        try {
-          const r = await opts.upsert(item, batchId);
-          inserted += r.inserted;
-          updated += r.updated;
-          errors += r.errors;
-        } catch (e) {
-          errors += 1;
-          await recordError(opts.companyId, batchId, def.endpoint, e instanceof Error ? e.message : String(e), item);
+      // Processa itens da página em paralelo (concorrência limitada) — cada
+      // upsert é I/O em supabase e independente entre si.
+      const CONCURRENCY = 8;
+      for (let i = 0; i < page.items.length; i += CONCURRENCY) {
+        const chunk = page.items.slice(i, i + CONCURRENCY);
+        total += chunk.length;
+        const settled = await Promise.all(chunk.map(async (item) => {
+          try {
+            return { ok: true as const, r: await opts.upsert(item, batchId) };
+          } catch (e) {
+            return { ok: false as const, err: e instanceof Error ? e.message : String(e), item };
+          }
+        }));
+        for (const s of settled) {
+          if (s.ok) {
+            inserted += s.r.inserted;
+            updated += s.r.updated;
+            errors += s.r.errors;
+          } else {
+            errors += 1;
+            await recordError(opts.companyId, batchId, def.endpoint, s.err, s.item);
+          }
         }
       }
     }
