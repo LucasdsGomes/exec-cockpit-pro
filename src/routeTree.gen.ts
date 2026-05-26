@@ -18,6 +18,7 @@ import { Route as AppFluxoDeCaixaRouteImport } from './routes/_app.fluxo-de-caix
 import { Route as AppDreRouteImport } from './routes/_app.dre'
 import { Route as AppCicloFinanceiroRouteImport } from './routes/_app.ciclo-financeiro'
 import { Route as AppAdminRouteImport } from './routes/_app.admin'
+import { Route as ApiPublicHooksOmieSyncRealtimeRouteImport } from './routes/api/public/hooks/omie-sync-realtime'
 import { Route as ApiPublicHooksOmieSyncNowRouteImport } from './routes/api/public/hooks/omie-sync-now'
 import { Route as ApiPublicHooksOmieSyncRouteImport } from './routes/api/public/hooks/omie-sync'
 import { Route as ApiPublicHooksImportYallaModeloRouteImport } from './routes/api/public/hooks/import-yalla-modelo'
@@ -66,6 +67,12 @@ const AppAdminRoute = AppAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => AppRoute,
 } as any)
+const ApiPublicHooksOmieSyncRealtimeRoute =
+  ApiPublicHooksOmieSyncRealtimeRouteImport.update({
+    id: '/api/public/hooks/omie-sync-realtime',
+    path: '/api/public/hooks/omie-sync-realtime',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicHooksOmieSyncNowRoute =
   ApiPublicHooksOmieSyncNowRouteImport.update({
     id: '/api/public/hooks/omie-sync-now',
@@ -96,6 +103,7 @@ export interface FileRoutesByFullPath {
   '/api/public/hooks/import-yalla-modelo': typeof ApiPublicHooksImportYallaModeloRoute
   '/api/public/hooks/omie-sync': typeof ApiPublicHooksOmieSyncRoute
   '/api/public/hooks/omie-sync-now': typeof ApiPublicHooksOmieSyncNowRoute
+  '/api/public/hooks/omie-sync-realtime': typeof ApiPublicHooksOmieSyncRealtimeRoute
 }
 export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
@@ -109,6 +117,7 @@ export interface FileRoutesByTo {
   '/api/public/hooks/import-yalla-modelo': typeof ApiPublicHooksImportYallaModeloRoute
   '/api/public/hooks/omie-sync': typeof ApiPublicHooksOmieSyncRoute
   '/api/public/hooks/omie-sync-now': typeof ApiPublicHooksOmieSyncNowRoute
+  '/api/public/hooks/omie-sync-realtime': typeof ApiPublicHooksOmieSyncRealtimeRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -124,6 +133,7 @@ export interface FileRoutesById {
   '/api/public/hooks/import-yalla-modelo': typeof ApiPublicHooksImportYallaModeloRoute
   '/api/public/hooks/omie-sync': typeof ApiPublicHooksOmieSyncRoute
   '/api/public/hooks/omie-sync-now': typeof ApiPublicHooksOmieSyncNowRoute
+  '/api/public/hooks/omie-sync-realtime': typeof ApiPublicHooksOmieSyncRealtimeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -139,6 +149,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/import-yalla-modelo'
     | '/api/public/hooks/omie-sync'
     | '/api/public/hooks/omie-sync-now'
+    | '/api/public/hooks/omie-sync-realtime'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/auth'
@@ -152,6 +163,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/import-yalla-modelo'
     | '/api/public/hooks/omie-sync'
     | '/api/public/hooks/omie-sync-now'
+    | '/api/public/hooks/omie-sync-realtime'
   id:
     | '__root__'
     | '/_app'
@@ -166,6 +178,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/import-yalla-modelo'
     | '/api/public/hooks/omie-sync'
     | '/api/public/hooks/omie-sync-now'
+    | '/api/public/hooks/omie-sync-realtime'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -175,6 +188,7 @@ export interface RootRouteChildren {
   ApiPublicHooksImportYallaModeloRoute: typeof ApiPublicHooksImportYallaModeloRoute
   ApiPublicHooksOmieSyncRoute: typeof ApiPublicHooksOmieSyncRoute
   ApiPublicHooksOmieSyncNowRoute: typeof ApiPublicHooksOmieSyncNowRoute
+  ApiPublicHooksOmieSyncRealtimeRoute: typeof ApiPublicHooksOmieSyncRealtimeRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -242,6 +256,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAdminRouteImport
       parentRoute: typeof AppRoute
     }
+    '/api/public/hooks/omie-sync-realtime': {
+      id: '/api/public/hooks/omie-sync-realtime'
+      path: '/api/public/hooks/omie-sync-realtime'
+      fullPath: '/api/public/hooks/omie-sync-realtime'
+      preLoaderRoute: typeof ApiPublicHooksOmieSyncRealtimeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/omie-sync-now': {
       id: '/api/public/hooks/omie-sync-now'
       path: '/api/public/hooks/omie-sync-now'
@@ -293,7 +314,17 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHooksImportYallaModeloRoute: ApiPublicHooksImportYallaModeloRoute,
   ApiPublicHooksOmieSyncRoute: ApiPublicHooksOmieSyncRoute,
   ApiPublicHooksOmieSyncNowRoute: ApiPublicHooksOmieSyncNowRoute,
+  ApiPublicHooksOmieSyncRealtimeRoute: ApiPublicHooksOmieSyncRealtimeRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
