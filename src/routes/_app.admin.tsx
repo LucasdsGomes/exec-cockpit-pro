@@ -37,6 +37,7 @@ import { PlanoContasTab } from "@/components/admin/PlanoContasTab";
 import { SaldosOrcamentoTab } from "@/components/admin/SaldosOrcamentoTab";
 import { SaudeDosDadosCard } from "@/components/admin/SaudeDosDadosCard";
 import { DiagnosticoTab } from "@/components/admin/DiagnosticoTab";
+import { SyncErrorsPanel } from "@/components/admin/SyncErrorsPanel";
 
 export const Route = createFileRoute("/_app/admin")({
   head: () => ({
@@ -282,6 +283,8 @@ function AdminPage() {
               )}
             </CardContent>
           </Card>
+
+          <SyncErrorsPanel companyId={cid} />
 
           {/* === AVANÇADO === colapsado por padrão */}
           <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
