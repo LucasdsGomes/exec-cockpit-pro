@@ -29,30 +29,34 @@ function getCredentials() {
 }
 
 export async function callOmie<T = unknown>(opts: OmieCallOptions): Promise<OmieResponse<T>> {
-  return omieGate(() => callOmieRaw<T>(opts));
+  // Gate POR MÉTODO (endpoint+call). OMIE rejeita apenas chamadas concorrentes
+  // do MESMO método ("Já existe uma requisição desse método sendo executada"),
+  // então não há motivo para serializar globalmente — isso só somava latência.
+  return omieGate(`${opts.endpoint}::${opts.call}`, () => callOmieRaw<T>(opts));
 }
 
-// ---- Global throttle + retry ----
-// OMIE rejects parallel requests for the same method with:
+// ---- Per-method throttle + retry ----
+// OMIE rejeita chamadas concorrentes do MESMO método com:
 //   "Já existe uma requisição desse método sendo executada..."
-// and applies aggressive rate limits ("API bloqueada por consumo indevido").
-// We serialize ALL outbound calls and add small spacing between them, plus
-// a short retry loop for transient "Já existe..." errors.
-let omieChain: Promise<unknown> = Promise.resolve();
-const OMIE_MIN_SPACING_MS = 350;
-let lastOmieCallAt = 0;
+// Serializamos por método (não globalmente), com pequeno espaçamento entre
+// páginas consecutivas do mesmo método, e fazemos retry com backoff.
+const omieChains = new Map<string, Promise<unknown>>();
+const omieLastAt = new Map<string, number>();
+const OMIE_MIN_SPACING_MS = 120;
 
-function omieGate<T>(task: () => Promise<T>): Promise<T> {
-  const run = omieChain.then(async () => {
-    const wait = OMIE_MIN_SPACING_MS - (Date.now() - lastOmieCallAt);
+function omieGate<T>(key: string, task: () => Promise<T>): Promise<T> {
+  const prev = omieChains.get(key) ?? Promise.resolve();
+  const run = prev.then(async () => {
+    const last = omieLastAt.get(key) ?? 0;
+    const wait = OMIE_MIN_SPACING_MS - (Date.now() - last);
     if (wait > 0) await new Promise((r) => setTimeout(r, wait));
     try {
       return await task();
     } finally {
-      lastOmieCallAt = Date.now();
+      omieLastAt.set(key, Date.now());
     }
   });
-  omieChain = run.catch(() => undefined);
+  omieChains.set(key, run.catch(() => undefined));
   return run as Promise<T>;
 }
 
